@@ -27,10 +27,12 @@ def file_length(filename):
 
 def correctify_file(filename):
     
-    file_len = file_length(filename)
-    filename_output = get_corrected_filename(filename)
+    filename_input = f'../data/raw/{filename}'
     
-    with open(filename, 'r') as f, open(filename_output, 'w') as f_out:
+    file_len = file_length(filename_input)
+    filename_output = f'../data/processed/{get_corrected_filename(filename)}'
+    
+    with open(filename_input, 'r') as f, open(filename_output, 'w') as f_out:
         for line in tqdm(f, total=file_len):
             parts = line.split()
             for part in parts[3:]:
@@ -46,9 +48,11 @@ def do_correct_file_if_not_exists(filename):
     else:
         filename_corrected = get_corrected_filename(filename)
     
+    filename_corrected = f'../data/processed/{filename_corrected}'
+    
     if Path(filename_corrected).is_file():
-        print(f'\nDid nothing, correct file already exists, "{filename_corrected}"\n\n')
-        file_len = file_length(filename)
+        print(f'\nDid nothing, correct file already exists, \n"{filename_corrected}"\n\n')
+        file_len = file_length(filename_corrected)
         
     else:
         print(f'\nGenerating "{filename_corrected}"', flush=True)
@@ -60,3 +64,13 @@ def do_correct_file_if_not_exists(filename):
 # import sys
 # filename = sys.argv[1]
 # do_correct_file_if_not_exists(filename)
+    
+
+def get_filename_and_lenght(filename): 
+    
+    file_len = do_correct_file_if_not_exists(filename)
+    if not "corrected" in filename:
+        filename = get_corrected_filename(filename)
+    filename = f'../data/processed/{filename}'
+    
+    return filename, file_len
