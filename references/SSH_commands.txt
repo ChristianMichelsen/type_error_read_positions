@@ -1,0 +1,13 @@
+
+moderne data:
+
+cd /willerslev/datasets/public/1000genomes_2015_nature/bam
+samtools view -F 4 ./NA12400.mapped.ILLUMINA.bwa.CEU.low_coverage.20120522.bam 1 | cut -f6,10,12-100 > ~/data/initial_error_test/NA12400_error_test.txt
+
+ancient data:
+
+cd /willerslev/users-shared/science-snm-willerslev-jst674/RISE2_Anatolia/Results/screeningdata
+samtools view -F 4 ./ESW_LRUE_MA2621_L1_S1_S83_L006.sort.rmdup.bam 1 | cut -f6,10,12-100 > ~/data/initial_error_test/ESW_LRUE_MA2621_error_test.txt	
+
+
+scp mnv794@ssh-snm-willerslev.science.ku.dk:/home/mnv794/data/initial_error_test/*.txt .
