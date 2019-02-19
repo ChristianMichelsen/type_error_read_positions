@@ -1,0 +1,10 @@
+2019-01-29 12:10:32,776	INFO	main: Started with the command: /usr/local/bin/mapDamage -i ./NA12400.mapped.ILLUMINA.bwa.CEU.low_coverage.20120522.bam -r /willerslev/datasets/reference_genomes/hs37d5/hs37d5.fa -d /home/mnv794/data/initial_error_test/mapDamage_modern_NA12400
+2019-02-15 12:20:14,630	INFO	main: Started with the command: /usr/local/bin/mapDamage -i NA12400.mapped.ILLUMINA.bwa.CEU.low_coverage.20120522.bam -r /willerslev/datasets/reference_genomes/hs37d5/hs37d5.fa -d /home/mnv794/data/type_error_read_positions/mapDamage_modern_NA12400/
+2019-02-15 14:36:55,854	INFO	main: Started with the command: /usr/local/bin/mapDamage -i NA12400.mapped.ILLUMINA.bwa.CEU.low_coverage.20120522.bam -r /willerslev/datasets/reference_genomes/hs37d5/hs37d5.fa -d /home/mnv794/data/type_error_read_positions/mapDamage_modern_NA12400/
+2019-02-15 14:39:55,716	INFO	main: Started with the command: /usr/local/bin/mapDamage -i NA12400.mapped.ILLUMINA.bwa.CEU.low_coverage.20120522.bam -r /willerslev/datasets/reference_genomes/hs37d5/hs37d5.fa -d /home/mnv794/data/type_error_read_positions/mapDamage_modern_NA12400/
+2019-02-16 05:28:51,390	DEBUG	main: BAM read in 53338.048382 seconds
+2019-02-16 05:29:35,528	INFO	mapdamage.rscript: Performing Bayesian estimates
+2019-02-16 05:29:35,529	DEBUG	mapdamage.rscript: Call: Rscript /usr/lib/python2.7/site-packages/mapdamage/Rscripts/stats/runGeneral.R --args 30 10000 10 50000 0 0 1 1 0 0 1 12 /home/mnv794/data/type_error_read_positions/mapDamage_modern_NA12400// /usr/lib/python2.7/site-packages/mapdamage/Rscripts/stats/ /home/mnv794/data/type_error_read_positions/mapDamage_modern_NA12400//Stats_out 0 0 0 /home/mnv794/data/type_error_read_positions/mapDamage_modern_NA12400//acgt_ratio.csv 0 0
+2019-02-16 05:38:34,274	DEBUG	mapdamage.rscript: Bayesian estimates completed in 538.745018 seconds
+2019-02-16 05:38:34,275	INFO	main: Successful run
+2019-02-16 05:38:34,275	DEBUG	main: Run completed in 53920.933817 seconds

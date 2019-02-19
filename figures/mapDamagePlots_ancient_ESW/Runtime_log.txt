@@ -1,0 +1,7 @@
+2019-01-28 15:38:22,440	INFO	main: Started with the command: /usr/local/bin/mapDamage -i ./ESW_LRUE_MA2621_L1_S1_S83_L006.sort.rmdup.bam -r /willerslev/datasets/reference_genomes/hs37d5/hs37d5.fa -d /home/mnv794/data/initial_error_test/
+2019-01-28 15:48:35,251	DEBUG	main: BAM read in 629.953981 seconds
+2019-01-28 15:48:59,842	INFO	mapdamage.rscript: Performing Bayesian estimates
+2019-01-28 15:48:59,842	DEBUG	mapdamage.rscript: Call: Rscript /science/willerslev/datasets/software_old/mapDamage/vir_mapdam/lib/python2.7/site-packages/mapdamage/Rscripts/stats/runGeneral.R --args 30 10000 10 50000 0 0 1 1 0 0 1 12 /home/mnv794/data/initial_error_test// /science/willerslev/datasets/software_old/mapDamage/vir_mapdam/lib/python2.7/site-packages/mapdamage/Rscripts/stats/ /home/mnv794/data/initial_error_test//Stats_out 0 0 0 /home/mnv794/data/initial_error_test//acgt_ratio.csv 0 0
+2019-01-28 15:57:04,165	DEBUG	mapdamage.rscript: Bayesian estimates completed in 484.323072 seconds
+2019-01-28 15:57:04,178	INFO	main: Successful run
+2019-01-28 15:57:04,178	DEBUG	main: Run completed in 1138.881300 seconds

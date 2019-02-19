@@ -47,6 +47,8 @@ lengths_reverse = []
 list_strand = []
 
 
+all_seqs = []
+
 print("Parsing MD-tags to get mismatch matrix: ", flush=True)
 
 with open(filename, 'r') as f:
@@ -54,9 +56,7 @@ with open(filename, 'r') as f:
         parts = line.split()
         
         strand, cigar, seq, md_tag = parts
-        
-        list_strand.append(int(strand))
-        
+
         if strand == '0':
             L = parse_md_tag(seq, md_tag, cigar, strand, d_mismatch_forward)
             lengths_forward.append(L)
@@ -65,12 +65,17 @@ with open(filename, 'r') as f:
             L = parse_md_tag(seq, md_tag, cigar, strand, d_mismatch_reverse)
             lengths_reverse.append(L)
         else:
-            continue
+            print(strand)
+            assert False
+            
+            
+        all_seqs.append(seq)
+        list_strand.append(int(strand))
+        
         
 list_strand = np.array(list_strand)
 lengths_forward = np.array(lengths_forward)        
 lengths_reverse = np.array(lengths_reverse)        
-
 
 df_error_rates_forward = get_error_rates_dataframe(d_mismatch_forward)
 df_error_rates_reverse = get_error_rates_dataframe(d_mismatch_reverse)
@@ -92,8 +97,9 @@ for i, (ax, name) in enumerate(zip(ax_error, names)):
                                        df_error_rates_reverse]):
         x = df_error_rates.index
         y = df_error_rates.loc[:, name]
-        sy = df_error_rates.loc[:, name+'_s']
-        ax.errorbar(x, y, sy, fmt='-', label=strand)
+        # sy = df_error_rates.loc[:, name+'_s']
+        # ax.errorbar(x, y, sy, fmt='-', label=strand)
+        ax.plot(x, y, '-', label=strand)
     
     ax.set(xlabel='Read Pos', ylabel='Error Rate', title=name)
     ax.legend()

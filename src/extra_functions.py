@@ -40,8 +40,8 @@ def seq_to_mismatch(seq, char, read_pos, N_soft_clipped_beginning, d_mismatch):
     return None
 
 cigar_implemented = list('MISD')
-cigar_all_implemented = list('MIDNSHP=X')
-cigar_not_implemented = [c for c in cigar_all_implemented if not c in cigar_implemented]
+cigar_all_options = list('MIDNSHP=X')
+cigar_not_implemented = [c for c in cigar_all_options if not c in cigar_implemented]
 
 
 def find_all(a_str, sub):
@@ -55,6 +55,18 @@ def find_all(a_str, sub):
 
 
 
+def gen_zero_matrix(ACGT_names):
+    return np.zeros((len(ACGT_names), len(ACGT_names)), dtype=int)
+
+
+def dict_to_mismatch(d_mismatch, read_pos):
+    read_pos_1_indexed = read_pos + 1
+    if not read_pos_1_indexed in d_mismatch:
+        d_mismatch[read_pos_1_indexed] = gen_zero_matrix(ACGT_names)
+    return d_mismatch[read_pos_1_indexed]
+
+
+
 def parse_md_tag(seq, md_tag, cigar, strand, d_mismatch):
     
     L = len(seq)
@@ -63,6 +75,7 @@ def parse_md_tag(seq, md_tag, cigar, strand, d_mismatch):
     N_inserts = 0
     N_soft_clipped_beginning = 0
     N_soft_clipped_end = 0
+    N_deletions = 0
     
     
     if 'I' in cigar:
@@ -100,7 +113,8 @@ def parse_md_tag(seq, md_tag, cigar, strand, d_mismatch):
 
         # ignore inserts for now            
         elif md_split[0] == '^':
-            continue
+            # print(f"Ignoring deletions for now: {seq}, {md_tag}, {cigar}")
+            N_deletions += len(md_split[1:])
 
         else:
             for char in md_split:
@@ -113,18 +127,8 @@ def parse_md_tag(seq, md_tag, cigar, strand, d_mismatch):
     
     assert read_pos == len(seq) - N_inserts
     
-    return L 
+    return L + N_deletions
 
-
-def gen_zero_matrix(ACGT_names):
-    return np.zeros((len(ACGT_names), len(ACGT_names)), dtype=int)
-
-
-def dict_to_mismatch(d_mismatch, read_pos):
-    read_pos_1_indexed = read_pos + 1
-    if not read_pos_1_indexed in d_mismatch:
-        d_mismatch[read_pos_1_indexed] = gen_zero_matrix(ACGT_names)
-    return d_mismatch[read_pos_1_indexed]
 
 
 
@@ -140,15 +144,16 @@ def mismatch_to_error_rate(mismatch):
     sum_all = mismatch[:4, :4].sum()
     
     e_all = 1 - diag_sum / sum_all
-    se_all = np.sqrt(e_all*(1-e_all)/sum_all)
+    # se_all = np.sqrt(e_all*(1-e_all)/sum_all)
     
-    e_C2T = mismatch[base2index['C'], base2index['T']] / sum_all
-    se_C2T = np.sqrt(e_C2T*(1-e_C2T)/sum_all)
+    e_C2T = mismatch[base2index['C'], base2index['T']] / mismatch[base2index['C'], :].sum()
+    # se_C2T = np.sqrt(e_C2T*(1-e_C2T)/sum_all)
     
-    e_G2A = mismatch[base2index['G'], base2index['A']] / sum_all
-    se_G2A = np.sqrt(e_G2A*(1-e_G2A)/sum_all)
+    e_G2A = mismatch[base2index['G'], base2index['A']] / mismatch[base2index['G'], :].sum()
+    # se_G2A = np.sqrt(e_G2A*(1-e_G2A)/sum_all)
     
-    return (e_all, se_all, e_C2T, se_C2T, e_G2A, se_G2A)
+    # return (e_all, se_all, e_C2T, se_C2T, e_G2A, se_G2A)
+    return (e_all, e_C2T, e_G2A)
 
 
 def get_error_rates_dataframe(d_mismatch):
@@ -157,14 +162,15 @@ def get_error_rates_dataframe(d_mismatch):
     for key in d_mismatch.keys():
         
         p = mismatch_to_error_rate(d_mismatch[key])
-        (e_all, se_all, e_C2T, se_C2T, e_G2A, se_G2A) = p
+        # (e_all, se_all, e_C2T, se_C2T, e_G2A, se_G2A) = p
+        (e_all, e_C2T, e_G2A) = p
         
         d_error_rates[key] = {'all':    e_all, 
-                              'all_s': se_all,
+                              # 'all_s': se_all,
                               'C2T':    e_C2T, 
-                              'C2T_s': se_C2T,
+                              # 'C2T_s': se_C2T,
                               'G2A':    e_G2A, 
-                              'G2A_s': se_G2A,
+                              # 'G2A_s': se_G2A,
                               }
         
     df_error_rates = pd.DataFrame(d_error_rates).T
