@@ -17,7 +17,7 @@ from tqdm import tqdm
 #                            )
 
 from src.data.prepare_reads import get_filename_and_lenght 
-from src.extra_functions import parse_md_tag, get_error_rates_dataframe
+from src.extra_functions import parse_md_tag, get_error_rates_dataframe, make_reference
 
 save_plots = False
 
@@ -53,23 +53,26 @@ print("Parsing MD-tags to get mismatch matrix: ", flush=True)
 
 with open(filename, 'r') as f:
     for iline, line in tqdm(enumerate(f), total=file_len):
-        parts = line.split()
         
-        strand, cigar, seq, md_tag = parts
+        strand, cigar, read, md_tag = line.split()
+        ref, seq = make_reference(read, md_tag, cigar)
+
+        if 'I' in cigar:
+            assert False
 
         if strand == '0':
-            L = parse_md_tag(seq, md_tag, cigar, strand, d_mismatch_forward)
+            L = parse_md_tag(read, md_tag, cigar, strand, d_mismatch_forward)
             lengths_forward.append(L)
              
         elif strand == '16':
-            L = parse_md_tag(seq, md_tag, cigar, strand, d_mismatch_reverse)
+            L = parse_md_tag(read, md_tag, cigar, strand, d_mismatch_reverse)
             lengths_reverse.append(L)
         else:
             print(strand)
             assert False
             
             
-        all_seqs.append(seq)
+        all_seqs.append(read)
         list_strand.append(int(strand))
         
         

@@ -15,15 +15,15 @@ ACGT_names = ['A', 'C', 'G', 'T', 'N']
 base2index = {val: i for i, val in enumerate(ACGT_names)}
 
 
-def seq_to_match(seq, read_pos, N_soft_clipped_beginning, d_mismatch):
+def seq_to_match(read, read_pos, N_soft_clipped_beginning, d_mismatch):
     
-    mask = any([s in ACGT_names for s in seq])
+    mask = any([s in ACGT_names for s in read])
     if not mask:
-        print(seq)
+        print(read)
         assert False
 
     counter = read_pos + N_soft_clipped_beginning
-    for base in seq:
+    for base in read:
         index = base2index[base]
         dict_to_mismatch(d_mismatch, counter)[index, index] += 1
         counter += 1
@@ -31,11 +31,11 @@ def seq_to_match(seq, read_pos, N_soft_clipped_beginning, d_mismatch):
     return None
     
 
-def seq_to_mismatch(seq, char, read_pos, N_soft_clipped_beginning, d_mismatch):
+def seq_to_mismatch(read, char, read_pos, N_soft_clipped_beginning, d_mismatch):
     
     assert len(char) == 1
     index_ref = base2index[char]
-    index_seq = base2index[seq[read_pos]]
+    index_seq = base2index[read[read_pos]]
     dict_to_mismatch(d_mismatch, read_pos+N_soft_clipped_beginning)[index_ref, index_seq] += 1
     return None
 
@@ -67,9 +67,9 @@ def dict_to_mismatch(d_mismatch, read_pos):
 
 
 
-def parse_md_tag(seq, md_tag, cigar, strand, d_mismatch):
+def parse_md_tag(read, md_tag, cigar, strand, d_mismatch):
     
-    L = len(seq)
+    L = len(read)
     
     read_pos = 0
     N_inserts = 0
@@ -90,10 +90,10 @@ def parse_md_tag(seq, md_tag, cigar, strand, d_mismatch):
         if cigar_split[1] == 'S' or cigar_split[-1] == 'S':
             if cigar_split[1] == 'S':
                 N_soft_clipped_beginning = int(cigar_split[0])
-                seq = seq[N_soft_clipped_beginning:]
+                read = read[N_soft_clipped_beginning:]
             if cigar_split[-1] == 'S':
                 N_soft_clipped_end = int(cigar_split[-2])
-                seq = seq[:-N_soft_clipped_end]
+                read = read[:-N_soft_clipped_end]
         else:
             print("Soft clipping in the middle not implemented yet")
             assert False 
@@ -108,35 +108,102 @@ def parse_md_tag(seq, md_tag, cigar, strand, d_mismatch):
             continue
         elif md_split.isdigit():
             i = int(md_split)
-            seq_to_match(seq[read_pos:read_pos+i], read_pos, N_soft_clipped_beginning, d_mismatch)
+            seq_to_match(read[read_pos:read_pos+i], read_pos, N_soft_clipped_beginning, d_mismatch)
             read_pos += i
 
         # ignore inserts for now            
         elif md_split[0] == '^':
-            # print(f"Ignoring deletions for now: {seq}, {md_tag}, {cigar}")
+            # print(f"Ignoring deletions for now: {read}, {md_tag}, {cigar}")
             N_deletions += len(md_split[1:])
 
         else:
             for char in md_split:
                 if char.upper() in ACGT_names:
-                    seq_to_mismatch(seq, char, read_pos, N_soft_clipped_beginning, d_mismatch)
+                    seq_to_mismatch(read, char, read_pos, N_soft_clipped_beginning, d_mismatch)
                     read_pos += 1
                 else: 
                     print(f"The characters {char} is not recognized")
                     assert False
     
-    assert read_pos == len(seq) - N_inserts
+    assert read_pos == len(read) - N_inserts
     
     return L + N_deletions
-
-
-
-
 
 #%% =============================================================================
 # 
 # =============================================================================
 
+# import string
+
+# from Martin Kircher, to complement DNA
+TABLE = str.maketrans('TGCAMRWSYKVHDBtgcamrwsykvhdb', \
+                         'ACGTKYWSRMBDHVacgtkywsrmbdhv')
+
+def revcomp(seq):
+    """ return reverse complemented string """
+    return seq.translate(TABLE)[::-1]
+
+
+
+
+def make_reference(read, md_tag, cigar):
+    """ Takes in a read, md_tag and cigar string and recreates the reference 
+        and sequence """
+    
+    seq = ''
+    ref = ''
+    counter = 0
+    
+    md_tags_splitted = list(filter(None, re.split(r'(\d+)', md_tag)))
+    for md_split in md_tags_splitted: # TODO: remove 'list' when done
+       
+        if md_split == '0':
+            continue
+        
+        elif md_split.isdigit():
+            i = int(md_split)
+            ref += read[counter:counter+i]
+            seq += read[counter:counter+i]
+            counter += i
+            
+        # ignore inserts for now            
+        elif md_split[0] == '^':
+            # print(f"Ignoring deletions for now: {read}, {md_tag}, {cigar}")
+            # assert False
+            ref += md_split[1:]
+            i = len(md_split[1:])
+            seq += i*'-' 
+            # counter += i
+
+        else:
+            for char in md_split:
+                if char.upper() in ACGT_names:
+                    ref += char.upper()
+                    seq += read[counter]
+                else: 
+                    print(f"The characters {char.upper()} is not recognized")
+                    assert False
+                counter += 1
+
+    assert len(ref) == len(seq)
+    
+    
+    if 'I' in cigar:
+        cigar_split = list(filter(None, re.split(r'(\d+)', cigar)))
+        counter = 0
+        for i, split in enumerate(cigar_split):
+            if split == 'M':
+                counter += int(split)
+            if split == 'I':
+                ref = ref[:counter] + int(split)*'-' + ref[:counter]
+                seq = seq[:counter] + int(split)*'-' + seq[:counter]
+
+    return ref, seq
+
+
+#%% =============================================================================
+# 
+# =============================================================================
 
 
 def mismatch_to_error_rate(mismatch):
@@ -177,3 +244,6 @@ def get_error_rates_dataframe(d_mismatch):
     return df_error_rates.sort_index()
 
 
+# =============================================================================
+# 
+# =============================================================================
