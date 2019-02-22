@@ -59,7 +59,7 @@ def preprocess_file_parallel(file_in):
 
 
 
-def do_correct_file_if_not_exists(filename):
+def do_correct_file_if_not_exists(filename, run_parallel=True):
     
     if 'corrected' in filename:
         filename_corrected = filename
@@ -77,9 +77,11 @@ def do_correct_file_if_not_exists(filename):
         file_in = f'../data/raw/{filename}'
         file_out = f'../data/processed/{append_corrected_to_filename(filename)}'
         
-        # file_len = preprocess_file(file_in, file_out)
-        n_cores = multiprocessing.cpu_count()-1 or 1
-        file_len = parallel_preprocessing(file_in, file_out, n_cores)  
+        if run_parallel:
+            n_cores = multiprocessing.cpu_count()-1 or 1
+            file_len = parallel_preprocessing(file_in, file_out, n_cores)  
+        else:
+            file_len = preprocess_file(file_in, file_out)
         
         print(f"\nFinished Preprocessing corrected file\n\n")
     
@@ -90,9 +92,9 @@ def do_correct_file_if_not_exists(filename):
 # do_correct_file_if_not_exists(filename)
     
 
-def get_filename_and_lenght(filename): 
+def get_filename_and_lenght(filename, run_parallel=True): 
     
-    file_len = do_correct_file_if_not_exists(filename)
+    file_len = do_correct_file_if_not_exists(filename, run_parallel)
     if not "corrected" in filename:
         filename = append_corrected_to_filename(filename)
     filename = f'../data/processed/{filename}'
