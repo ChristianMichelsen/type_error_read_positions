@@ -23,7 +23,7 @@ from src.extra_functions import (get_error_rates_dataframe, make_reference,
 save_plots = True
 
 filename = 'NA12400_error_test.txt' # modern dana
-filename = 'ESW_LRUE_MA2621_error_test.txt' # ancient data
+# filename = 'ESW_LRUE_MA2621_error_test.txt' # ancient data
 filename_bam = 'ESW_LRUE_MA2621_L1_S1_S83_L006.sort.rmdup.bam'
 refname = 'hs37d5.fa'
 
@@ -213,6 +213,7 @@ from pathlib import Path
 
 filename_mismatch = file_processed_in.replace('corrected.txt', 'mismatch_results.pkl')
 
+
 if not Path(filename_mismatch).is_file():
     
     d_mismatch_forward = {}
@@ -221,7 +222,7 @@ if not Path(filename_mismatch).is_file():
     lengths_forward = []
     lengths_reverse = []
     
-    list_strand = []
+    list_strand = np.zeros(N_reads)
     
     print("Parsing MD-tags to get mismatch matrix: ", flush=True)
     
@@ -237,7 +238,7 @@ if not Path(filename_mismatch).is_file():
             L = len(seq_processed)
             
             is_reverse = (int(strand_processed)>=16)
-            list_strand.append(list_strand)
+            list_strand[iline] = int(strand_processed)
             
             if not is_reverse:
                 fill_mismatch_matrix(ref_processed, seq_processed, d_mismatch_forward)
@@ -247,10 +248,11 @@ if not Path(filename_mismatch).is_file():
                 lengths_reverse.append(L)
     
             
-    list_strand = np.array(list_strand)
+    # list_strand = list_strand
     lengths_forward = np.array(lengths_forward)        
     lengths_reverse = np.array(lengths_reverse)
 
+    print('Finished parsing the MD-tags, now saving the file')
 
     mismatch_results = [d_mismatch_forward, d_mismatch_reverse, 
                         list_strand, lengths_forward, lengths_reverse]
