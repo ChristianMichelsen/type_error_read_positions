@@ -2,15 +2,27 @@
 modern data:
 
 cd /willerslev/datasets/public/1000genomes_2015_nature/bam
-samtools view -F 4 ./NA12400.mapped.ILLUMINA.bwa.CEU.low_coverage.20120522.bam 1 | cut -f6,10,12-100 > ~/data/type_error_read_positions/NA12400_error_test.txt
+samtools view -F 4 ./NA12400.mapped.ILLUMINA.bwa.CEU.low_coverage.20120522.bam | cut -f2,6,10,12-100 > ~/data/type_error_read_positions/NA12400_error_test.txt
 
-ancient data:
+ancient data:  
 
 cd /willerslev/users-shared/science-snm-willerslev-jst674/RISE2_Anatolia/Results/screeningdata
-samtools view -F 4 ./ESW_LRUE_MA2621_L1_S1_S83_L006.sort.rmdup.bam 1 | cut -f6,10,12-100 > ~/data/type_error_read_positions/ESW_LRUE_MA2621_error_test.txt	
+samtools view -F 4 ./ESW_LRUE_MA2621_L1_S1_S83_L006.sort.rmdup.bam | cut -f2,6,10,12-100 > ~/data/type_error_read_positions/ESW_LRUE_MA2621_error_test.txt	
 
 
 scp mnv794@ssh-snm-willerslev.science.ku.dk:/home/mnv794/data/type_error_read_positions/*.txt .
+
+scp mnv794@ssh-snm-willerslev.science.ku.dk:/willerslev/users-shared/science-snm-willerslev-jst674/RISE2_Anatolia/Results/screeningdata/ESW_LRUE_MA2621_L1_S1_S83_L006.sort.rmdup.bam .
+scp mnv794@ssh-snm-willerslev.science.ku.dk:/willerslev/datasets/reference_genomes/hs37d5/hs37d5.fa .
+scp mnv794@ssh-snm-willerslev.science.ku.dk:/willerslev/datasets/reference_genomes/hs37d5/hs37d5.fa.fai .
+scp mnv794@ssh-snm-willerslev.science.ku.dk:/willerslev/datasets/public/1000genomes_2015_nature/bam/NA12400.mapped.ILLUMINA.bwa.CEU.low_coverage.20120522.bam .
+
+
+# extract only some reads:
+
+samtools view -h big.bam | head -n 1000 | samtools view -bS - > little.bam
+samtools view -h /willerslev/datasets/public/1000genomes_2015_nature/bam/NA12400.mapped.ILLUMINA.bwa.CEU.low_coverage.20120522.bam | head -n 1000000 | samtools view -bS - > NA12400_small_bam_1_000_000.bam
+scp mnv794@ssh-snm-willerslev.science.ku.dk:/home/mnv794/data/type_error_read_positions/data/raw/NA12400_small_bam_1_000_000.bam .
 
 
 
@@ -18,16 +30,15 @@ scp mnv794@ssh-snm-willerslev.science.ku.dk:/home/mnv794/data/type_error_read_po
 -- mapdamage: --
 
 
+modern data:
+
+cd /willerslev/datasets/public/1000genomes_2015_nature/bam
+mapDamage -i NA12400.mapped.ILLUMINA.bwa.CEU.low_coverage.20120522.bam -r /willerslev/datasets/reference_genomes/hs37d5/hs37d5.fa -d /home/mnv794/data/type_error_read_positions/mapDamage_modern_NA12400/
+scp mnv794@ssh-snm-willerslev.science.ku.dk:/home/mnv794/data/type_error_read_positions/mapDamage_modern_NA12400/* .
+
 
 ancient data:
 
 cd /willerslev/users-shared/science-snm-willerslev-jst674/RISE2_Anatolia/Results/screeningdata
 mapDamage -i ./ESW_LRUE_MA2621_L1_S1_S83_L006.sort.rmdup.bam -r /willerslev/datasets/reference_genomes/hs37d5/hs37d5.fa -d /home/mnv794/data/type_error_read_positions/mapDamage_ancient_ESW_LRUE_MA2621/
 scp mnv794@ssh-snm-willerslev.science.ku.dk:/home/mnv794/data/type_error_read_positions/mapDamage_ancient_ESW_LRUE_MA2621/* .
-
-
-modern data:
-
-cd /willerslev/datasets/public/1000genomes_2015_nature/bam
-mapDamage -i NA12400.mapped.ILLUMINA.bwa.CEU.low_coverage.20120522.bam -r /willerslev/datasets/reference_genomes/hs37d5/hs37d5.fa -d /home/mnv794/data/type_error_read_positions/mapDamage_modern_NA12400/
-scp mnv794@ssh-snm-willerslev.science.ku.dk:/home/mnv794/data/type_error_read_positions/mapDamage_modern_NA12400/* .

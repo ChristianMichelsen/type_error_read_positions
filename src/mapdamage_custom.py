@@ -29,15 +29,14 @@ _BAM_PCR_DUPE  = 0x400
 _BAM_CHIMERIC  = 0x800
 
 
-
-
-def _filter_reads(bamfile):
-    filtered_flags = _BAM_UNMAPPED | \
+filtered_flags = _BAM_UNMAPPED | \
                      _BAM_SECONDARY | \
                      _BAM_FAILED_QC | \
                      _BAM_PCR_DUPE | \
                      _BAM_CHIMERIC
 
+
+def _filter_reads(bamfile):
     for read in bamfile:
         if not (read.flag & filtered_flags):
             yield read

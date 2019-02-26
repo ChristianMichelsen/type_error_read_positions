@@ -11,31 +11,12 @@ import re
 import pandas as pd
 
 
-# =============================================================================
-# 
-# =============================================================================
-
-
 ACGT_names = ['A', 'C', 'G', 'T', 'N', '-']
 base2index = {val: i for i, val in enumerate(ACGT_names)}
 
 def is_linux():
     import platform
     return platform.system() == 'Linux'
-
-
-#%% =============================================================================
-# 
-# =============================================================================
-
-# from Martin Kircher, to complement DNA
-TABLE = str.maketrans('TGCAMRWSYKVHDBtgcamrwsykvhdb', \
-                      'ACGTKYWSRMBDHVacgtkywsrmbdhv')
-
-def comp(seq):
-    """ return reverse complemented string """
-    return seq.translate(TABLE)
-
 
 
 def init_ref_from_cigar(cigar):
@@ -221,7 +202,7 @@ def make_reference(read, md_tag, strand, cigar=None, is_md_cigar=False):
     """ Takes in a read, md_tag and cigar string and recreates the reference 
         and sequence """
     
-    is_reverse = (int(strand)>=16)
+    is_reverse = (int(strand) & 0x10) != 0
     
     if cigar is not None and is_md_cigar:
         print("Ignoring cigar input since is_md_cigar == True")
@@ -295,6 +276,584 @@ def make_reference(read, md_tag, strand, cigar=None, is_md_cigar=False):
     
 
     return ref, seq
+
+
+
+#%% =============================================================================
+# 
+# =============================================================================
+
+import re
+
+_BAM_UNMAPPED  = 0x4
+_BAM_SECONDARY = 0x100
+_BAM_FAILED_QC = 0x200
+_BAM_PCR_DUPE  = 0x400
+_BAM_CHIMERIC  = 0x800
+
+
+filtered_flags = _BAM_UNMAPPED | \
+                 _BAM_SECONDARY | \
+                 _BAM_FAILED_QC | \
+                 _BAM_PCR_DUPE | \
+                 _BAM_CHIMERIC
+
+
+def _read_txtfile(txtfile):
+    """
+    Takes a subset of the bamfile. Can use a approximate fraction of the
+    hits or specific number of reads using reservoir sampling. Returns
+    a list in the last case otherwise a iterator.
+    
+    Skips failed reads (unmapped, secondary, failed qc, duplicates..)
+    
+    """
+    
+    for line in txtfile:
+        
+        strand, cigar, read, md_tag = line.split()
+        strand = int(strand)
+        
+        if not (strand & filtered_flags):
+            yield (strand, cigar, read, md_tag)
+
+
+
+
+
+
+
+
+# from Martin Kircher, to complement DNA
+TABLE = str.maketrans('TGCAMRWSYKVHDBtgcamrwsykvhdb', \
+                      'ACGTKYWSRMBDHVacgtkywsrmbdhv')
+
+def comp(seq):
+    """ return reverse complemented string """
+    return seq.translate(TABLE)
+
+
+CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=XB])")
+MDZ_REGEX = re.compile("(\d+)")
+CODE2CIGAR= "MIDNSHP=XB"
+
+CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
+maketrans = TABLE
+
+
+def cigar_tuples_to_string(cigartuples):
+    return "".join([ "%i%c" % (y,CODE2CIGAR[x]) for x,y in cigartuples])
+
+def get_cigar_parts(cigar):
+    parts = CIGAR_REGEX.findall(cigar)
+    return parts
+    
+def cigar_string_to_tuples(cigar):
+    parts = get_cigar_parts(cigar)
+    # reverse order
+    cigartuples = [(CIGAR2CODE[y], int(x)) for x,y in parts]
+    return cigartuples
+
+
+
+
+def parse_cigar(cigarlist, ope):
+    """ for a specific operation (mismach, match, insertion, deletion... see above)
+    return occurences and index in the alignment """
+    tlength = 0
+    coordinate = []
+    # count matches, indels and mismatches
+    oplist = (0, 1, 2, 7, 8)
+    for operation, length in cigarlist:
+        if operation == ope:
+                coordinate.append([length, tlength])
+        if operation in oplist: 
+                tlength += length
+    return coordinate
+
+
+
+def align(cigarlist, seq, ref):
+    """ insert gaps according to the cigar string 
+    deletion: gaps to be inserted into read sequences, 
+    insertions: gaps to be inserted into reference sequence """    
+    lref = list(ref)
+    for nbr, idx in parse_cigar(cigarlist, 1):
+        lref[idx:idx] = ["-"] * nbr
+
+    lread = list(seq)
+    for nbr, idx in parse_cigar(cigarlist, 2):
+        lread[idx:idx] = ["-"] * nbr
+
+    return "".join(lread), "".join(lref)
+
+
+BAM_CMATCH      = 0
+BAM_CINS        = 1
+BAM_CDEL        = 2
+BAM_CREF_SKIP   = 3
+BAM_CSOFT_CLIP  = 4
+BAM_CHARD_CLIP  = 5
+BAM_CPAD        = 6
+BAM_CEQUAL      = 7
+BAM_CDIFF       = 8
+BAM_CBACK       = 9
+
+BAM_CIGAR_STR   = "MIDNSHP=XB"
+BAM_CIGAR_SHIFT = 4
+BAM_CIGAR_MASK  = 0xf
+BAM_CIGAR_TYPE  = 0x3C1A7
+
+def bam_cigar_op(c):
+    return c & BAM_CIGAR_MASK
+def bam_cigar_oplen(c):
+    return c >> BAM_CIGAR_SHIFT
+
+# // Note that BAM_CIGAR_STR is padded to length 16 bytes below so that
+# // the array look-up will not fall off the end.  '?' is chosen as the
+# // padding character so it's easy to spot if one is emitted, and will
+# // result in a parsing failure (in sam_parse1(), at least) if read.
+# def bam_cigar_opchr(c) (BAM_CIGAR_STR "??????" [bam_cigar_op(c)])
+# bam_cigar_gen(l, o) ((l)<<BAM_CIGAR_SHIFT|(o))
+
+
+def getCigarTuplesLength(cigartuples):
+    # return sum([y for (x,y) in cigartuples])
+    return get_alignment_length(cigartuples)
+
+
+def getQueryStart(cigartuples):
+
+    start_offset = 0
+    L_max = getCigarTuplesLength(cigartuples)
+    
+    for op, length in cigartuples:
+        if op == BAM_CHARD_CLIP:
+            if start_offset != 0 and start_offset != L_max:
+                raise ValueError('Invalid clipping in CIGAR string')
+        elif op == BAM_CSOFT_CLIP:
+            start_offset += length
+        else:
+            break
+
+    return start_offset
+
+
+def getQueryEnd(cigartuples):
+    
+    start_offset = getQueryStart(cigartuples)
+    
+    
+    end_offset = getCigarTuplesLength(cigartuples)
+    L_max = end_offset
+
+    # if there is no sequence, compute length from cigar string
+    if end_offset == 0:
+        for op, length in cigartuples:
+            if op == BAM_CMATCH or \
+               op == BAM_CINS or \
+               op == BAM_CEQUAL or \
+               op == BAM_CDIFF or \
+              (op == BAM_CSOFT_CLIP and end_offset == 0):
+                end_offset += length
+    else:
+        # walk backwards in cigar string
+        for op, length in cigartuples:
+            if op == BAM_CHARD_CLIP:
+                if end_offset != L_max:
+                    raise ValueError('Invalid clipping in CIGAR string')
+            elif op == BAM_CSOFT_CLIP:
+                end_offset -= length
+            else:
+                break
+
+    return end_offset + start_offset + 1
+
+
+
+def getSequenceInRange(seq, start, end):
+    return seq[start:end] 
+
+
+def get_alignment_length(cigartuples):
+    l = 0
+    for op, length in cigartuples:
+        if op == BAM_CSOFT_CLIP or op == BAM_CHARD_CLIP:
+            continue
+        l += length
+    return l
+
+
+def get_md_reference_length(md_tag):
+    l = 0
+    md_idx = 0
+    nmatches = 0
+    
+    md_tag_ord = [ord(s) for s in md_tag]
+    md_tag_ord.append(0)
+
+    while md_tag_ord[md_idx] != 0:
+        # number 0:9
+        if md_tag_ord[md_idx] >= 48 and md_tag_ord[md_idx] <= 57:
+            nmatches *= 10
+            nmatches += md_tag_ord[md_idx] - 48
+            md_idx += 1
+            continue
+        else:
+            l += nmatches
+            nmatches = 0
+            if md_tag_ord[md_idx] == ord('^'):
+                md_idx += 1
+                # A to Z
+                while md_tag_ord[md_idx] >= 65 and md_tag_ord[md_idx] <= 90:
+                    md_idx += 1
+                    l += 1
+            else:
+                md_idx += 1
+                l += 1
+
+    l += nmatches
+    return l
+
+
+def get_md_reference_length2(md_tag):
+    # is just slightly slower than get_md_reference_length ut easier to read
+    md_split = list(filter(None, re.split(r'(\d+)', md_tag)))
+    counter = 0
+    for md in md_split:
+        if md.isdigit():
+            counter += int(md)
+        
+        elif md[0] == '^':
+            counter += len(md[1:])
+
+        else:
+            counter += len(md)
+    return counter
+
+
+
+def build_alignment_sequence(seq, cigar, md_tag):
+    """return expanded sequence from MD tag.
+    The sequence includes substitutions and both insertions in the
+    reference as well as deletions to the reference sequence. Combine
+    with the cigar string to reconstitute the query or the reference
+    sequence.
+    Positions corresponding to `N` (skipped region from the reference)
+    in the CIGAR string will not appear in the returned sequence. The
+    MD should correspondingly not contain these. Thus proper tags are::
+       Deletion from the reference:   cigar=5M1D5M    MD=5^C5
+       Skipped region from reference: cigar=5M1N5M    MD=10
+    Returns
+    -------
+    None, if no MD tag is present.
+    """
+    # if not src:
+        # return None
+
+    # md_tag_ptr = bam_aux_get(src, "MD")
+    
+    parts = get_cigar_parts(cigar)
+    cigartuples = cigar_string_to_tuples(cigar)
+    
+
+    start = getQueryStart(cigartuples)
+    end = getQueryEnd(cigartuples)
+    
+    # get read sequence, taking into account soft-clipping
+    read_sequence = getSequenceInRange(seq, start, end)
+    read_sequence = seq[start:]
+    
+    # s_idx = 0
+
+    max_len = get_alignment_length(cigartuples)
+    if max_len == 0:
+        raise ValueError("could not determine alignment length")
+
+    r_idx = 0
+    s = ''
+    for op, l in cigartuples:
+        
+        # op = "M", "=", "X"
+        if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
+            s += read_sequence[r_idx:r_idx+l]
+            r_idx += l
+            # for i in range(l-1, -1, -1):
+            # # for i from 0 <= i < l:
+            #     s[s_idx] = read_sequence[r_idx]
+            #     r_idx += 1
+            #     s_idx += 1
+        
+        # op = "D" 
+        elif op == BAM_CDEL:
+            s += l*'-'
+            # s_idx += l
+            # for i in range(l-1, -1, -1):
+            # # for i from 0 <= i < l:
+            #     s[s_idx] = '-'
+            #     s_idx += 1
+        
+        # op = "N"
+        elif op == BAM_CREF_SKIP:
+            pass
+        
+        # op = "I"
+        elif op == BAM_CINS:
+            # encode insertions into reference as lowercase
+            s += read_sequence[r_idx:r_idx+l].lower()
+            r_idx += l
+            # for i in range(l-1, -1, -1):
+            # # for i from 0 <= i < l:
+            #     # encode insertions into reference as lowercase
+            #     s[s_idx] = read_sequence[r_idx].lower()
+            #     r_idx += 1
+            #     s_idx += 1
+        
+        # op = "S"
+        elif op == BAM_CSOFT_CLIP:
+            pass
+        
+        # op = "H"
+        elif op == BAM_CHARD_CLIP:
+            pass # advances neither
+        
+        # op = "P"
+        elif op == BAM_CPAD:
+            raise NotImplementedError(
+                "Padding (BAM_CPAD, 6) is currently not supported. "
+                "Please implement. Sorry about that.")
+
+
+
+    
+    # Check if MD tag is valid by matching CIGAR length to MD tag defined length
+    # Insertions would be in addition to what is described by MD, so we calculate
+    # the number of insertions seperately.
+    insertions = sum([int(x) for (x,y) in parts if y=='I'])
+    
+
+    md_len = get_md_reference_length(md_tag)
+    
+    # TODO: Remove this check if never called
+    assert get_md_reference_length(md_tag) == get_md_reference_length2(md_tag) 
+    
+    if md_len + insertions > max_len:
+        raise AssertionError(f"Invalid MD tag: MD length {md_len} mismatch with CIGAR length {max_len} and {insertions} insertions")
+
+    return s[:max_len]
+    # return s[:s_idx], s_old[:s_idx]
+
+
+
+def insert_substring_in_string_at_pos(s, s_insert, index):
+    return s[:index] + s_insert + s[index+1:]
+
+
+def build_reference_sequence(seq, cigar, md_tag):
+    """return the reference sequence in the region that is covered by the
+    alignment of the read to the reference.
+    This method requires the MD tag to be set.
+    """
+    
+    cigartuples = cigar_string_to_tuples(cigar)
+    
+    # s_idx = 0
+    ref_seq = build_alignment_sequence(seq, cigar, md_tag)
+
+    nmatches = 0
+    md_idx = 0
+    s_idx = 0
+
+    md_tag_ord = [ord(ss) for ss in md_tag]
+    md_tag_ord.append(0)
+
+    while md_tag_ord[md_idx] != 0:
+        # c is numerical
+        # 0 to 9
+        if 48 <= md_tag_ord[md_idx] <= 57:
+            nmatches *= 10
+            nmatches += md_tag_ord[md_idx] - 48
+            md_idx += 1
+            continue
+        else:
+            # save matches up to this point, skipping insertions
+             # for x from 0 <= x < nmatches:
+            for x in range(nmatches-1, -1, -1):
+                while ref_seq[s_idx] >= 'a':
+                    s_idx += 1
+                s_idx += 1
+            while ref_seq[s_idx] >= 'a':
+                s_idx += 1
+
+            nmatches = 0
+            if md_tag_ord[md_idx] == ord('^'):
+                md_idx += 1
+                # A to Z
+                while 65 <= md_tag_ord[md_idx] <= 90:
+                    # assert s[s_idx] == '-'
+                    # s[s_idx] = chr(md_tag_ord[md_idx])
+                    s_insert = chr(md_tag_ord[md_idx])
+                    ref_seq = insert_substring_in_string_at_pos(ref_seq, s_insert, s_idx)
+                    s_idx += 1
+                    md_idx += 1
+            else:
+                # save mismatch
+                # enforce lower case
+                # c = md_tag_ord[md_idx]
+                # if c <= 90:
+                    # c += 32
+                # s[s_idx] = chr(md_tag_ord[md_idx]).lower()
+                # s = s[:s_idx] + chr(md_tag_ord[md_idx]).lower() + s[s_idx+1:]
+                s_insert = chr(md_tag_ord[md_idx]).lower()
+                ref_seq = insert_substring_in_string_at_pos(ref_seq, s_insert, s_idx)
+                s_idx += 1
+                md_idx += 1
+
+
+
+    s = ''
+    
+    cref_seq = ref_seq[:]
+    r_idx = 0
+    for op, l in cigartuples:
+        
+        # M, =, X
+        if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
+            s += cref_seq[r_idx:r_idx+l]
+            r_idx += l
+            # for i in range(l, -1, -1):
+            # # for i from 0 <= i < l:
+            #     s[s_idx] = cref_seq[r_idx]
+            #     r_idx += 1
+            #     s_idx += 1
+        # D
+        elif op == BAM_CDEL:
+            # for i from 0 <= i < l:
+            s += cref_seq[r_idx:r_idx+l]
+            r_idx += l
+            # for i in range(l, -1, -1):
+            #     s[s_idx] = cref_seq[r_idx]
+            #     r_idx += 1
+            #     s_idx += 1
+        
+        # N
+        elif op == BAM_CREF_SKIP:
+            pass
+        
+        # I
+        elif op == BAM_CINS:
+            r_idx += l
+        
+        # S
+        elif op == BAM_CSOFT_CLIP:
+            pass
+        
+        #H
+        elif op == BAM_CHARD_CLIP:
+            pass # advances neither
+        
+        # P
+        elif op == BAM_CPAD:
+            raise NotImplementedError(
+                "Padding (BAM_CPAD, 6) is currently not supported. "
+                "Please implement. Sorry about that.")
+
+    return s
+
+
+
+
+
+def align_ref(cigarlist, ref):
+    """ insert gaps according to the cigar string 
+    deletion: gaps to be inserted into read sequences, 
+    insertions: gaps to be inserted into reference sequence """    
+    lref = list(ref)
+    for nbr, idx in parse_cigar(cigarlist, 1):
+        lref[idx:idx] = ["-"] * nbr
+
+    return "".join(lref)
+
+
+
+
+    # def get_reference_sequence(self):
+    #     """return the reference sequence in the region that is covered by the
+    #     alignment of the read to the reference.
+    #     This method requires the MD tag to be set.
+    #     """
+    #     return force_str(build_reference_sequence(self._delegate))
+
+
+
+
+    # property query_alignment_sequence:
+    #     """aligned portion of the read.
+    #     This is a substring of :attr:`seq` that excludes flanking
+    #     bases that were :term:`soft clipped` (None if not present). It
+    #     is equal to ``seq[qstart:qend]``.
+    #     SAM/BAM files may include extra flanking bases that are not
+    #     part of the alignment.  These bases may be the result of the
+    #     Smith-Waterman or other algorithms, which may not require
+    #     alignments that begin at the first residue or end at the last.
+    #     In addition, extra sequencing adapters, multiplex identifiers,
+    #     and low-quality bases that were not considered for alignment
+    #     may have been retained.
+    #     """
+
+    #     def __get__(self):
+    #         if self.cache_query_alignment_sequence:
+    #             return self.cache_query_alignment_sequence
+
+    #         cdef bam1_t * src
+    #         cdef uint32_t start, end
+
+    #         src = self._delegate
+
+    #         if src.core.l_qseq == 0:
+    #             return None
+
+    #         start = getQueryStart(src)
+    #         end   = getQueryEnd(src)
+
+    #         self.cache_query_alignment_sequence = force_str(
+    #             getSequenceInRange(src, start, end))
+    #         return self.cache_query_alignment_sequence
+
+
+
+    # property query_sequence:
+    #     """read sequence bases, including :term:`soft clipped` bases
+    #     (None if not present).
+    #     Note that assigning to seq will invalidate any quality scores.
+    #     Thus, to in-place edit the sequence and quality scores, copies of
+    #     the quality scores need to be taken. Consider trimming for example::
+    #        q = read.query_qualities
+    #        read.query_squence = read.query_sequence[5:10]
+    #        read.query_qualities = q[5:10]
+    #     The sequence is returned as it is stored in the BAM file. Some mappers
+    #     might have stored a reverse complement of the original read
+    #     sequence.
+    #     """
+    #     def __get__(self):
+    #         if self.cache_query_sequence:
+    #             return self.cache_query_sequence
+
+    #         cdef bam1_t * src
+    #         cdef char * s
+    #         src = self._delegate
+
+    #         if src.core.l_qseq == 0:
+    #             return None
+
+    #         self.cache_query_sequence = force_str(getSequenceInRange(
+    #             src, 0, src.core.l_qseq))
+    #         return self.cache_query_sequence
+
+
+
+
+
 
 
 #%% =============================================================================
