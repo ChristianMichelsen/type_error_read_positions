@@ -281,12 +281,14 @@ def is_linux():
 ACGT_names = ['A', 'C', 'G', 'T', 'N', '-', 'Other']
 base2index = {val: i for i, val in enumerate(ACGT_names)}
 
+# http://www.dnabaser.com/articles/IUPAC%20ambiguity%20codes.html
+IGNORE_LETTERS = 'YRWSKMDVHBXN'
 
 def init_zero_matrix(ACGT_names):
     return np.zeros((len(ACGT_names), len(ACGT_names)), dtype=int)
 
 
-def fill_mismatch_matrix(seq1, seq2, d_mismatch):
+def fill_mismatch_matrix(seq1, seq2, d_mismatch, verbose=True):
     """ seq1 = ref, seq2 = seq """
     
     for i, (s1, s2) in enumerate(zip(seq1, seq2)):
@@ -294,7 +296,16 @@ def fill_mismatch_matrix(seq1, seq2, d_mismatch):
         if not i in d_mismatch:
             d_mismatch[i] = init_zero_matrix(ACGT_names)
         
-        d_mismatch[i][base2index[s1], base2index[s2]] += 1
+        try:
+            d_mismatch[i][base2index[s1], base2index[s2]] += 1
+        
+        except KeyError as e:
+            if verbose:
+                print(f'Found {e} in sequence. Ignoring it and using "Other" instead')
+            if s1 in ACGT_names:
+                d_mismatch[i][base2index[s1], base2index['Other']] += 1
+            else:
+                d_mismatch[i][base2index['Other'], base2index[s2]] += 1
     
     return d_mismatch
 

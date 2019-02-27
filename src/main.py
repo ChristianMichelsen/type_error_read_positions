@@ -22,6 +22,10 @@ from src.extra_functions import (get_error_rates_dataframe,
 
 save_plots = True
 do_ancient = True
+verbose = True
+force_rerun = True
+do_plotting = False
+
 
 if do_ancient:
     print("\nRunning on ancient DNA")
@@ -30,7 +34,7 @@ if do_ancient:
 else:
     print("\nRunning on modern DNA")
     filename = 'NA12400_error_test.txt' # modern dna
-    filename = 'NA12400_small_bam_1_000_000_error_test.txt' # modern dna
+    # filename = 'NA12400_small_bam_1_000_000_error_test.txt' # modern dna
     filename_bam = 'NA12400_small_bam_1_000_000.bam'
 refname = 'hs37d5.fa'
 
@@ -87,63 +91,70 @@ from pathlib import Path
 filename_mismatch = file_processed_in.replace('corrected.txt', 'mismatch_results.pkl')
 
 
-if not Path(filename_mismatch).is_file():
+def main():
     
-    d_mismatch_forward = {}
-    d_mismatch_reverse = {}
-    
-    lengths_forward = []
-    lengths_reverse = []
-    
-    list_strand = []
-    
-    print("Parsing MD-tags to get mismatch matrix: ", flush=True)
-    
-    with open(file_processed_in, 'r') as f_processed:
-        for iline, line_txt in tqdm(enumerate(_read_txtfile(f_processed)), total=N_reads):
-            
-            strand_processed, cigar_processed, read_processed, md_tag_processed = line_txt
-            # seq, cigar, md_tag = read_processed, cigar_processed, md_tag_processed
-            
-            seq_processed = build_alignment_sequence(read_processed, cigar_processed, md_tag_processed)
-            ref_processed = build_reference_sequence(read_processed, cigar_processed, md_tag_processed)
-            
-            is_reverse = ((strand_processed & 0x10) != 0)
-            if is_reverse:
-                ref_processed = comp(ref_processed)
-                seq_processed = comp(seq_processed)
+    if not Path(filename_mismatch).is_file() or force_rerun:
+        
+        d_mismatch_forward = {}
+        d_mismatch_reverse = {}
+        
+        lengths_forward = []
+        lengths_reverse = []
+        
+        list_strand = []
+        
+        print("Parsing MD-tags to get mismatch matrix: ", flush=True)
+        
+        with open(file_processed_in, 'r') as f_processed:
+            for iline, line_txt in tqdm(enumerate(_read_txtfile(f_processed)), total=N_reads):
                 
-            L = len(seq_processed)
-            
-            list_strand.append(strand_processed)
-            
-            if not is_reverse:
-                fill_mismatch_matrix(ref_processed, seq_processed, d_mismatch_forward)
-                lengths_forward.append(L)
-            else:
-                fill_mismatch_matrix(ref_processed, seq_processed, d_mismatch_reverse)
-                lengths_reverse.append(L)
+                strand_processed, cigar_processed, read_processed, md_tag_processed = line_txt
+                # seq, cigar, md_tag = read_processed, cigar_processed, md_tag_processed
+                
+                seq_processed = build_alignment_sequence(read_processed, cigar_processed, md_tag_processed)
+                ref_processed = build_reference_sequence(read_processed, cigar_processed, md_tag_processed)
+                
+                is_reverse = ((strand_processed & 0x10) != 0)
+                if is_reverse:
+                    ref_processed = comp(ref_processed)
+                    seq_processed = comp(seq_processed)
+                    
+                L = len(seq_processed)
+                
+                list_strand.append(strand_processed)
+                
+                if not is_reverse:
+                    fill_mismatch_matrix(ref_processed, seq_processed, d_mismatch_forward, verbose=verbose)
+                    lengths_forward.append(L)
+                else:
+                    fill_mismatch_matrix(ref_processed, seq_processed, d_mismatch_reverse, verbose=verbose)
+                    lengths_reverse.append(L)
+        
+                
+        list_strand = np.array(list_strand)
+        lengths_forward = np.array(lengths_forward)        
+        lengths_reverse = np.array(lengths_reverse)
     
-            
-    list_strand = np.array(list_strand)
-    lengths_forward = np.array(lengths_forward)        
-    lengths_reverse = np.array(lengths_reverse)
+        print('Finished parsing the MD-tags, now saving the file')
+    
+        mismatch_results = [d_mismatch_forward, d_mismatch_reverse, 
+                            list_strand, lengths_forward, lengths_reverse]
+    
+        with open(filename_mismatch, 'wb') as file:  
+            # store the data as binary data stream
+            pickle.dump(mismatch_results, file)
+    
+    else:
+    
+        with open(filename_mismatch, 'rb') as file:  
+            # read the data as binary data stream
+            p = pickle.load(file)
+            d_mismatch_forward, d_mismatch_reverse, list_strand, lengths_forward, lengths_reverse = p
 
-    print('Finished parsing the MD-tags, now saving the file')
+    return d_mismatch_forward, d_mismatch_reverse, list_strand, lengths_forward, lengths_reverse
+    
 
-    mismatch_results = [d_mismatch_forward, d_mismatch_reverse, 
-                        list_strand, lengths_forward, lengths_reverse]
-
-    with open(filename_mismatch, 'wb') as file:  
-        # store the data as binary data stream
-        pickle.dump(mismatch_results, file)
-
-else:
-
-    with open(filename_mismatch, 'rb') as file:  
-        # read the data as binary data stream
-        p = pickle.load(file)
-        d_mismatch_forward, d_mismatch_reverse, list_strand, lengths_forward, lengths_reverse = p
+d_mismatch_forward, d_mismatch_reverse, list_strand, lengths_forward, lengths_reverse = main()
 
 
 df_error_rates_forward = get_error_rates_dataframe(d_mismatch_forward)
@@ -154,7 +165,7 @@ df_error_rates_reverse = get_error_rates_dataframe(d_mismatch_reverse)
 # Error rate plots
 # =============================================================================
 
-if not is_linux():
+if not is_linux() and do_plotting:
     
     names = [col for col in df_error_rates_forward.columns if not '_s' in col]
     
