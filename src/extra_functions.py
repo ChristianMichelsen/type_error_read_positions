@@ -119,7 +119,7 @@ def get_md_reference_length(md_tag):
     return counter
 
 
-def build_alignment_sequence(seq, cigar, md_tag, upper_case=True):
+def build_alignment_sequence(seq, cigar, md_tag):
     """return expanded sequence from CIGAR and checks length with MD-tag.
     """
 
@@ -169,11 +169,7 @@ def build_alignment_sequence(seq, cigar, md_tag, upper_case=True):
     if md_len + insertions > max_len:
         raise AssertionError(f"Invalid MD tag: MD length {md_len} mismatch with CIGAR length {max_len} and {insertions} insertions")
     
-    if upper_case:
-        s = s.upper()
-
     return s[:max_len]
-
 
 
 def insert_substring_in_string_at_pos(s, s_insert, index):
@@ -253,19 +249,37 @@ def cigar_correct_reference_sequence(ref_seq, cigar_parts):
     return "".join(lref)
 
 
-def build_reference_sequence(seq, cigar, md_tag):
+def build_reference_sequence(alignment_seq, cigar, md_tag):
     """return the reference sequence in the region that is covered by the
     alignment of the read to the reference.
     This method requires the MD tag to be set.
     """
     
     cigar_parts = get_cigar_parts(cigar)
-    alignment_seq = build_alignment_sequence(seq, cigar, md_tag, upper_case=False)
+    # alignment_seq = build_alignment_sequence(seq, cigar, md_tag)
     
     ref_seq_md_corrected = md_correct_reference_sequence(alignment_seq, md_tag)
     ref_seq = cigar_correct_reference_sequence(ref_seq_md_corrected, cigar_parts)
             
     return ref_seq.upper()
+
+
+def build_alignment_reference_seq(read, cigar, md_tag):
+    
+    seq = build_alignment_sequence(read, cigar, md_tag)
+    ref = build_reference_sequence(seq, cigar, md_tag)
+    
+    return seq.upper(), ref.upper()
+
+
+def correct_reverse_strans(strand, seq, ref):
+    is_reverse = ((strand & 0x10) != 0)
+    if is_reverse:
+        ref = comp(ref)
+        seq = comp(seq)
+    return is_reverse, ref, seq
+
+
 
 
 #%% =============================================================================
@@ -284,31 +298,92 @@ base2index = {val: i for i, val in enumerate(ACGT_names)}
 # http://www.dnabaser.com/articles/IUPAC%20ambiguity%20codes.html
 IGNORE_LETTERS = 'YRWSKMDVHBXN'
 
+
+MAX_LENGTH = 1000
+
 def init_zero_matrix(ACGT_names):
-    return np.zeros((len(ACGT_names), len(ACGT_names)), dtype=int)
+    return np.zeros((MAX_LENGTH, 7,7), dtype=int)
 
 
-def fill_mismatch_matrix(seq1, seq2, d_mismatch, verbose=True):
+def fill_mismatch_matrix(ref, seq, mismatch, verbose=True):
     """ seq1 = ref, seq2 = seq """
     
-    for i, (s1, s2) in enumerate(zip(seq1, seq2)):
-        i += 1
-        if not i in d_mismatch:
-            d_mismatch[i] = init_zero_matrix(ACGT_names)
+    for i, (s_ref, s_seq) in enumerate(zip(ref, seq)):
         
         try:
-            d_mismatch[i][base2index[s1], base2index[s2]] += 1
+            mismatch[i, base2index[s_ref], base2index[s_seq]] += 1
         
         except KeyError as e:
-            if verbose:
-                print(f'Found {e} in sequence. Ignoring it and using "Other" instead')
-            if s1 in ACGT_names:
-                d_mismatch[i][base2index[s1], base2index['Other']] += 1
+            if s_ref in ACGT_names:
+                if verbose:
+                    print(f'Found {e} in sequence. Ignoring it and using "Other" instead')
+                mismatch[i, base2index[s_ref], base2index['Other']] += 1
             else:
-                d_mismatch[i][base2index['Other'], base2index[s2]] += 1
+                if verbose:
+                    print(f'Found {e} in reference. Ignoring it and using "Other" instead')
+                mismatch[i, base2index['Other'], base2index[s_seq]] += 1
+                
+        i += 1
     
-    return d_mismatch
+    return mismatch
 
+
+# def fill_mismatch_forward_reverse(is_reverse, ref, seq, 
+#                                   mismatch_forward, mismatch_reverse, 
+#                                   verbose=True):
+#     if not is_reverse:
+#         fill_mismatch_matrix(ref, seq, mismatch_forward, verbose=verbose)
+#     else:
+#         fill_mismatch_matrix(ref, seq, mismatch_reverse, verbose=verbose)
+
+
+
+# def dict_count(d, key):
+#     if key in d:
+#         d[key] += 1
+#     else:
+#         d[key] = 1
+#     return None
+
+
+def fill_results(is_reverse, ref, seq, strand, d_res, verbose=True):
+    
+    L = len(seq)
+    d_res['strand'][strand] += 1
+    
+    # forward
+    if not is_reverse:
+        fill_mismatch_matrix(ref, seq, d_res['mismatch']['+'], verbose=verbose)
+        d_res['lengths']['+'][L] += 1
+    
+    # reverse
+    else:
+        fill_mismatch_matrix(ref, seq, d_res['mismatch']['-'], verbose=verbose)
+        d_res['lengths']['-'][L] += 1
+
+    return None
+
+
+# =============================================================================
+# 
+# =============================================================================
+
+
+def calc_ACGT_content(mismatch1, mismatch2=None):
+    mismatch = mismatch1[:, :4, :4]
+    if isinstance(mismatch2, np.ndarray):
+        mismatch += mismatch2[:, :4, :4]
+    total_sum = mismatch.flatten().sum()
+    return mismatch.sum(0).sum(1)/total_sum
+
+
+def mismatch_to_dataframe_collapsed(mismatch):
+    
+    ref_names = ['Ref '+s for s in ACGT_names]
+    read_names = ['Read '+s for s in ACGT_names]
+    
+    df = pd.DataFrame(mismatch.sum(0), index=ref_names, columns=read_names)
+    return df
 
 
 def mismatch_to_error_rate(mismatch):
@@ -321,15 +396,18 @@ def mismatch_to_error_rate(mismatch):
     return (e_all, e_C2T, e_G2A)
 
 
-def get_error_rates_dataframe(d_mismatch):
+def get_error_rates_dataframe(mismatch, max_len=None):
+    
+    if max_len is None:
+        max_len = mismatch.shape[0]
     
     d_error_rates = {}
-    for key in d_mismatch.keys():
+    for i in range(max_len):
         
-        p = mismatch_to_error_rate(d_mismatch[key])
+        p = mismatch_to_error_rate(mismatch[i, :, :])
         (e_all, e_C2T, e_G2A) = p
         
-        d_error_rates[key] = {
+        d_error_rates[i] = {
                               # 'all':    e_all, 
                               'C2T':    e_C2T, 
                               'G2A':    e_G2A, 
@@ -341,3 +419,10 @@ def get_error_rates_dataframe(d_mismatch):
 
 
 
+def phred_symbol_to_Q_score(s):
+    Q = ord(s)-33
+    return Q
+
+def Q_score_to_probability(Q):
+    P = 10**-(Q/10.0)
+    return P
