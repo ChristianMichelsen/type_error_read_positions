@@ -34,11 +34,11 @@ save_plots = True
 
 do = 'ancient'
 # do = 'modern'
-# do = 'gargamel'
+do = 'gargamel'
 
 
 verbose = True
-force_rerun = False
+force_rerun = True
 do_plotting = True
 
 
@@ -331,9 +331,9 @@ if do_mapDamage_analysis:
 
     
     else:
+        
+        print("Loading custom mapDamage results")
         d_res = load_d_res(filename_mismatch)
-
-
 
 
 
@@ -355,12 +355,19 @@ if do_ML_analysis:
                                             total=N_reads):
                     process_line_tidy_ML(line_txt, ML_res)
             
+            # converts Counter dict to list of tuples that Pandas can read 
             df = []
             for key, val in dict(ML_res).items():
                 df.append((*key, val))
+            
+            # create dataframe from list of tuples
+            df = pd.DataFrame(df, columns=header)
+            
+            #downcast to unsigned integers (since always positive counts)
+            for col in df:
+                df.loc[:, col] = pd.to_numeric(df[col], downcast='unsigned')
                 
-            df = pd.DataFrame(df, columns=header, dtype="uint8")
-            df['is_mismatch'] = df['is_mismatch'].astype(bool)
+            # save dataframe
             df.to_pickle(filename_mismatch_ML)
             
         else:
@@ -384,17 +391,30 @@ if do_ML_analysis:
         # save_d_res(d_res, filename_mismatch)
 
 
+    # load files
     else:
+        print("Loading 1 core ML dataframe")
+        df = pd.read_pickle(filename_mismatch_ML)
         
-        if cores == 1:
-            df = pd.read_pickle(filename_mismatch_ML)
-        
-        else:
-            print("More cores in ML loading not implemented yet")
-            assert False
-
 
 x=x
+
+
+
+
+df.loc[df['strand']==0, []]
+
+
+
+
+
+
+#%% =============================================================================
+# 
+# =============================================================================
+
+
+
 
 
 import numpy_indexed as npi
