@@ -126,7 +126,9 @@ def build_alignment_sequence(seq, cigar, md_tag):
     cigar_parts = get_cigar_parts(cigar)
     # cigartuples = cigar_string_to_tuples(cigar)
     
-    start = sum([y for (x,y) in cigar_parts if x == 'S'])
+    # TODO: check this thorughly!!!
+    # start = sum([y for (x,y) in cigar_parts if x == 'S'])
+    start = cigar_parts[0][1] if cigar_parts[0][0] == 'S' else 0 
     
     # get read sequence, taking into account soft-clipping
     read_sequence = seq[start:]
@@ -293,6 +295,7 @@ def is_linux():
 
 
 ACGT_names = ['A', 'C', 'G', 'T', 'N', '-', 'Other']
+# ACGT_names = ['A', 'C', 'G', 'T', 'N']
 base2index = {val: i for i, val in enumerate(ACGT_names)}
 
 # http://www.dnabaser.com/articles/IUPAC%20ambiguity%20codes.html
@@ -317,11 +320,15 @@ def fill_mismatch_matrix(ref, seq, mismatch, verbose=True):
             if s_ref in ACGT_names:
                 if verbose:
                     print(f'Found {e} in sequence. Ignoring it and using "Other" instead')
+                    # print(f'Found {e} in sequence. Ignoring it and using "N" instead')
                 mismatch[i, base2index[s_ref], base2index['Other']] += 1
+                # mismatch[i, base2index[s_ref], base2index['N']] += 1
             else:
                 if verbose:
                     print(f'Found {e} in reference. Ignoring it and using "Other" instead')
+                    # print(f'Found {e} in reference. Ignoring it and using "N" instead')
                 mismatch[i, base2index['Other'], base2index[s_seq]] += 1
+                # mismatch[i, base2index['N'], base2index[s_seq]] += 1
                 
         i += 1
     
@@ -426,3 +433,31 @@ def phred_symbol_to_Q_score(s):
 def Q_score_to_probability(Q):
     P = 10**-(Q/10.0)
     return P
+
+#% =============================================================================
+# 
+# =============================================================================
+
+
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
