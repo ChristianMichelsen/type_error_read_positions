@@ -289,35 +289,62 @@ from pathlib import Path
 
 filename_mismatch = file_processed_in.replace(f'corrected.txt', 
                                               f'mismatch_results_{cores}cores.pkl')
+filename_mismatch_ML = filename_mismatch.replace('.pkl', '_ML.pkl')
 
 
 
 header = ['obs_base', 'prev_ref_base', 'position', 'strand', 'ref_base', 'is_mismatch', 'counts']
 
 do_mapDamage_analysis = True
+do_ML_analysis = True
 
-x=x
 
-if not Path(filename_mismatch).is_file() or force_rerun:
+if do_mapDamage_analysis:
     
-    print(f"Parsing MD-tags to get mismatch matrix using {cores} cores", flush=True)
+    if not Path(filename_mismatch).is_file() or force_rerun:
     
-    #init dict to store results in
-    d_res = init_d()
-    
-    
-    
-    if cores == 1:
+        d_res = init_d()
         
-        
-        if do_mapDamage_analysis:
+        if cores == 1:
             
             with open(file_processed_in, 'r') as f_processed:
                 for iline, line_txt in tqdm(enumerate(_read_txtfile(f_processed)), 
                                             total=N_reads):
                     process_line(line_txt, d_res)
-                
         else:
+            
+            #init objects
+            pool = mp.Pool(cores)
+            
+            #create jobs
+            for chunk_start, chunk_size, is_last in chunkify(file_processed_in, 10*cores):
+                # print(chunk_start, chunk_size)
+                #http://blog.shenwei.me/python-multiprocessing-pool-difference-between-map-apply-map_async-apply_async/
+                pool.apply_async(process_chunk, args=(chunk_start, chunk_size, is_last), 
+                                 callback=partial(collect_result, d_res))
+            
+            pool.close() # Prevents any more tasks from being submitted to the pool
+            pool.join() # Wait for the worker processes to exit
+            
+        print('Finished parsing the MD-tags, now saving the file')
+        save_d_res(d_res, filename_mismatch)
+
+    
+    else:
+        d_res = load_d_res(filename_mismatch)
+
+
+
+
+
+if do_ML_analysis:
+
+    if not Path(filename_mismatch_ML).is_file() or force_rerun:
+        
+        print(f"Parsing MD-tags to get mismatch matrix using {cores} cores", flush=True)
+        
+        
+        if cores == 1:
             
             # res = []
             ML_res = Counter()
@@ -327,49 +354,47 @@ if not Path(filename_mismatch).is_file() or force_rerun:
                 for iline, line_txt in tqdm(enumerate(_read_txtfile(f_processed)), 
                                             total=N_reads):
                     process_line_tidy_ML(line_txt, ML_res)
-                    # if (iline%100000) == 0:
-                    #     res = np.array(res, dtype=np.uint8)
-                    #     current_length += len(res)
-                    #     if iline == 0:
-                    #         with h5py.File('several_datasets.hdf5', 'w') as f_out:
-                    #             print(res.shape)
-                    #             d = f_out.create_dataset('data', (res.shape[0], res.shape[1]), dtype='i1', maxshape=(None, res.shape[1]))
-                    #             d[:current_length, :] = res
-                    #     else:
-                    #         with h5py.File('several_datasets.hdf5', 'a') as f_out:
-                    #             d = f_out['data']
-                    #             d.resize((len(d) + current_length, 5))
-                    #             d[-current_length:, :] = res
-                    #     res = []
-                    #     current_length = 0
-                
             
             df = []
             for key, val in dict(ML_res).items():
                 df.append((*key, val))
                 
-        
             df = pd.DataFrame(df, columns=header, dtype="uint8")
             df['is_mismatch'] = df['is_mismatch'].astype(bool)
-        
-        
-    else:
-        #init objects
-        pool = mp.Pool(cores)
-        
-        #create jobs
-        for chunk_start, chunk_size, is_last in chunkify(file_processed_in, 10*cores):
-            # print(chunk_start, chunk_size)
-            #http://blog.shenwei.me/python-multiprocessing-pool-difference-between-map-apply-map_async-apply_async/
-            pool.apply_async(process_chunk, args=(chunk_start, chunk_size, is_last), 
-                             callback=partial(collect_result, d_res))
-        
-        pool.close() # Prevents any more tasks from being submitted to the pool
-        pool.join() # Wait for the worker processes to exit
-        
-    print('Finished parsing the MD-tags, now saving the file')
-    save_d_res(d_res, filename_mismatch)
+            df.to_pickle(filename_mismatch_ML)
+            
+        else:
+            print("More cores in ML analysis not implemented yet")
+            assert False
+                
+                # #init objects
+                # pool = mp.Pool(cores)
+                
+                # #create jobs
+                # for chunk_start, chunk_size, is_last in chunkify(file_processed_in, 10*cores):
+                #     # print(chunk_start, chunk_size)
+                #     #http://blog.shenwei.me/python-multiprocessing-pool-difference-between-map-apply-map_async-apply_async/
+                #     pool.apply_async(process_chunk, args=(chunk_start, chunk_size, is_last), 
+                #                      callback=partial(collect_result, d_res))
+                
+                # pool.close() # Prevents any more tasks from being submitted to the pool
+                # pool.join() # Wait for the worker processes to exit
+                
+        # print('Finished parsing the MD-tags, now saving the file')
+        # save_d_res(d_res, filename_mismatch)
 
+
+    else:
+        
+        if cores == 1:
+            df = pd.read_pickle(filename_mismatch_ML)
+        
+        else:
+            print("More cores in ML loading not implemented yet")
+            assert False
+
+
+x=x
 
 
 import numpy_indexed as npi
