@@ -1,0 +1,6 @@
+data=out/test_s.trimmed.truncated.gz
+ref=data/endo/horse_chrom31.fa
+bwa index 
+bwa aln ${ref}  > aln_sa.sai
+bwa samse ${ref} > aln_sa.sai _s.fq > aln-se.sam
+samtools view -Sb  aln-se.sam > aln-se.bam

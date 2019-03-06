@@ -1,0 +1,11 @@
+# table produced by mapDamage version 2.0.8-dirty
+# using mapped file out_aligned.bam and horse_chrom31.fa as reference file
+# Std: strand of reads
+Std	Length	Occurences 
++	34	477
++	35	496108
++	36	1
+-	34	502
+-	35	497518
+-	36	4
+-	37	1

@@ -1,0 +1,1 @@
+AdapterRemoval --file1 _s.fq --basename output_single --trimns --trimqualities --gzip

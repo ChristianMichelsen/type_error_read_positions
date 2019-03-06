@@ -54,9 +54,46 @@ scp mnv794@ssh-snm-willerslev.science.ku.dk:/home/mnv794/data/type_error_read_po
 
 - - - - -  FASTQ + REF -> SAM/BAM - - - - - - 
 
+# trimming
+AdapterRemoval --file1 _s.fq --basename out_trimmed --trimns --trimqualities --gzip
+# creating index of reference file
 bwa index horse_chrom31.fa
-bwa aln horse_chrom31.fa _s.fq > aln_sa.sai
-bwa samse horse_chrom31.fa aln_sa.sai _s.fq > aln-se.sam
-samtools view -Sb  aln-se.sam > aln-se.bam
+# align trimmed read to reference
+bwa aln horse_chrom31.fa out_trimmed.truncated.gz > out_aligned.sai
+# create sam file
+bwa samse horse_chrom31.fa out_aligned.sai _s.fq > out_aligned.sam
+# create bam file
+samtools view -Sb  out_aligned.sam > out_aligned.bam
+# view file
+samtools view out_aligned.bam | head -n 20 | less -S
+# extract correct columns of file
+samtools view -F 4 out_aligned.bam | cut -f2,6,10,12-100 > ~/data/type_error_read_positions/data/raw/gargamel_1_000_000.txt
+# download (from own computer)
+scp mnv794@ssh-snm-willerslev.science.ku.dk:~/data/type_error_read_positions/data/raw/gargamel_1_000_000.txt .
+
+# mapDamge of simulated gargamel sample
+mapDamage -i out_aligned.bam -r horse_chrom31.fa -d ./mapDamage_gargamel/
+scp mnv794@ssh-snm-willerslev.science.ku.dk:~/data/gargamel/mapDamage_gargamel/* .
+
+
+
+scp mnv794@ssh-snm-willerslev.science.ku.dk:/willerslev/scratch/bdt425/simulation/* .
+
+
+
+# # # # # # # # # # # # # # 
+
+
+
+AdapterRemoval --file1 _s.fq --threads 3  --basename out_trimmed --trimns --trimqualities --gzip
+data=out/
+bwa index horse_chrom31.fa
+bwa aln -l 15000 -t 10 horse_chrom31.fa out_trimmed.truncated.gz > out_aligned.sai
+bwa samse horse_chrom31.fa out_aligned.sai out_trimmed.truncated.gz | samtools sort -O BAM -@ 20 -T test -  > out_aligned.bam
+
+
+
+
+
 
 

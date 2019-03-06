@@ -728,6 +728,8 @@ def align_ref(cigarlist, ref):
 
 
 
+from extra_functions import build_alignment_reference_seq, correct_reverse_strans
+
 
 def mapDamage_main_test(ref_in, file_bam_in, file_processed_in):
 
@@ -786,17 +788,22 @@ def mapDamage_main_test(ref_in, file_bam_in, file_processed_in):
             counter += 1
             
             
-            strand_processed, cigar_processed, read_processed, md_tag_processed = line_txt
+            strand, cigar, read, md_tag = line_txt
+            seq, ref = build_alignment_reference_seq(read, cigar, md_tag)
+            is_reverse, ref_processed, seq_processed = correct_reverse_strans(strand, seq, ref)
             
-            # seq, cigar, md_tag = read_processed, cigar_processed, md_tag_processed
             
-            seq_processed = build_alignment_sequence(read_processed, cigar_processed, md_tag_processed)
-            ref_processed = build_reference_sequence(read_processed, cigar_processed, md_tag_processed)
+            # strand_processed, cigar_processed, read_processed, md_tag_processed = line_txt
             
-            is_reverse = ((strand_processed & 0x10) != 0)
-            if is_reverse:
-                ref_processed = comp(ref_processed)
-                seq_processed = comp(seq_processed)
+            # # seq, cigar, md_tag = read_processed, cigar_processed, md_tag_processed
+            
+            # seq_processed = build_alignment_sequence(read_processed, cigar_processed, md_tag_processed)
+            # ref_processed = build_reference_sequence(read_processed, cigar_processed, md_tag_processed)
+            
+            # is_reverse = ((strand_processed & 0x10) != 0)
+            # if is_reverse:
+            #     ref_processed = comp(ref_processed)
+            #     seq_processed = comp(seq_processed)
                 
             # external coordinates 5' and 3' , 3' is 1-based offset
             coordinate = get_coordinates(read_bam)
