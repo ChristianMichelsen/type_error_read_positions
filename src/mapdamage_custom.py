@@ -731,14 +731,32 @@ def align_ref(cigarlist, ref):
 from extra_functions import build_alignment_reference_seq, correct_reverse_strans
 
 
-def mapDamage_main_test(ref_in, file_bam_in, file_processed_in):
+def append_corrected_to_filename(filename):
+        return filename.replace('.txt', '_corrected.txt')
+    
+def get_filename_input(filename):
+    return f'../data/raw/{filename}'
 
-    from datetime import datetime
+def get_filename_output(filename):
+    return f'../data/processed/{append_corrected_to_filename(filename)}'
+
+def get_filename_processed(filename):
+    return get_filename_output(filename)
+    
+
+def mapDamage_main_test(refname, filename_bam, filename):
+
+    file_processed_in = get_filename_processed(filename)
+    file_bam_in = get_filename_input(filename_bam)
+    ref_in = get_filename_input(refname)
+    
+    
+    # from datetime import datetime
     import pysam
     from tqdm import tqdm
 
     
-    start_time = datetime.now()
+    # start_time = datetime.now()
 
     # fetch all references and associated lengths in nucleotides
     ref_bam = pysam.FastaFile(ref_in) 

@@ -11,6 +11,12 @@ import re
 import pandas as pd
 
 
+
+
+#%% =============================================================================
+# Read txt/bam file and process reads and references
+# =============================================================================
+
 _BAM_UNMAPPED  = 0x4
 _BAM_SECONDARY = 0x100
 _BAM_FAILED_QC = 0x200
@@ -284,147 +290,255 @@ def correct_reverse_strans(strand, seq, ref):
 
 
 
+
+#%% =============================================================================
+# 
+# =============================================================================
+
+import multiprocessing as mp, os
+from functools import partial
+from collections import Counter
+from pathlib import Path
+from tqdm import tqdm
+
+
+ACGT_names = ['A', 'C', 'G', 'T', 'N', '0']
+base2index = {val: i for i, val in enumerate(ACGT_names)}
+
+# strand2index = {'+': 1, '-': 0}
+# is_reverse2index = {True: 0, False: 1}
+
+header = ['obs_base', 'prev_ref_base', 'position', 'strand', 'ref_base', 'L', 'counts']
+
+
+def ACGTN_correct_string(string):
+    """
+    Corrects a string such that it only contains characters from ACGT_names
+    else replace the character with an 'N'.     
+    """
+    return ''.join(char if char in ACGT_names else 'N' for char in string)
+
+
+# def tidy_ML_seq_ref_data(ref, seq, is_reverse, res):
+def tidy_ML_seq_ref_data(ref, seq, strand, res):
+    
+    seq = ACGTN_correct_string(seq)
+    ref = ACGTN_correct_string(ref)
+    
+    for i, (s_ref, s_seq) in enumerate(zip(ref, seq)):
+        if i == 0:
+            prev_ref_base = '0'
+        else:
+            prev_ref_base = ref[i-1]
+        
+        obs_base = base2index[s_seq]
+        prev_ref_base = base2index[prev_ref_base]
+        position = i+1
+        # strand = is_reverse2index[is_reverse]
+        length = len(seq)
+        ref_base = base2index[s_ref]
+        # is_mismatch = (obs_base != ref_base)
+        
+        res[(obs_base, prev_ref_base, position, strand, ref_base, length)] += 1
+    
+    return None
+    
+
+def process_line_tidy_ML(line_txt, ML_res):
+    strand, cigar, read, md_tag = line_txt
+    seq, ref = build_alignment_reference_seq(read, cigar, md_tag)
+    is_reverse, ref, seq = correct_reverse_strans(strand, seq, ref)
+    tidy_ML_seq_ref_data(ref, seq, strand, ML_res)
+    return None    
+    
+
+def process_chunk_ML(file_processed_in, chunk_start, chunk_size, is_last):
+    ML_res = Counter()
+    with open(file_processed_in) as f:
+        f.seek(chunk_start)
+        lines = f.read(chunk_size).splitlines()
+        it = enumerate(_read_txtfile(lines))
+        if is_last:
+        # if True:
+            it = tqdm(it, total=len(lines))
+        for iline, line_txt in it:
+            process_line_tidy_ML(line_txt, ML_res)
+    return ML_res
+
+
+def collect_result_ML(ML_res, ML_chunk):
+    ML_res += ML_chunk
+    return None
+
+
+def chunkify(fname, cores):
+    file_end = os.path.getsize(fname)
+    if cores == 1:
+        yield 0, file_end
+    else:
+        size = file_end // cores
+        with open(fname, 'r') as f:
+            chunkEnd = f.tell()
+            while True:
+                chunk_start = chunkEnd
+                f.seek(chunk_start+size)
+                f.readline()
+                chunkEnd = f.tell()
+                chunk_size = chunkEnd - chunk_start
+                
+                is_last = True if chunkEnd > file_end else False
+                
+                yield chunk_start, chunk_size, is_last
+                if chunkEnd > file_end:
+                    break
+                
+
+def save_ML_res(ML_res, filename_mismatch_ML):
+    # converts Counter dict to list of tuples that Pandas can read 
+    df = []
+    for key, val in dict(ML_res).items():
+        df.append((*key, val))
+    
+    # create dataframe from list of tuples
+    df = pd.DataFrame(df, columns=header)
+    
+    #downcast to unsigned integers (since always positive counts)
+    for col in df:
+        df.loc[:, col] = pd.to_numeric(df[col], downcast='unsigned')
+        
+    # save dataframe
+    df.to_pickle(filename_mismatch_ML)
+    return df
+
+def load_ML_res(filename_mismatch_ML):
+    return pd.read_pickle(filename_mismatch_ML)
+
+
+
+
+
+def get_ML_res(file_processed_in, cores, force_rerun, N_reads):
+    
+    filename_mismatch_ML = file_processed_in.replace(f'corrected.txt', 
+                                    f'mismatch_results_{cores}cores_ML.pkl')
+    
+    if not Path(filename_mismatch_ML).is_file() or force_rerun:
+        
+        print(f"Parsing MD-tags to get mismatch matrix using {cores} cores", flush=True)
+        
+        
+        if cores == 1:
+            
+            # res = []
+            ML_res = Counter()
+        
+            with open(file_processed_in, 'r') as f_processed:    
+                # current_length = 0
+                for iline, line_txt in tqdm(enumerate(_read_txtfile(f_processed)), 
+                                            total=N_reads):
+                    process_line_tidy_ML(line_txt, ML_res)
+            
+        else:
+            
+            ML_res = Counter()
+            
+            #init objects
+            pool = mp.Pool(cores)
+            
+            #create jobs
+            for chunk_start, chunk_size, is_last in chunkify(file_processed_in, 10*cores):
+                # print(chunk_start, chunk_size, is_last)
+                #http://blog.shenwei.me/python-multiprocessing-pool-difference-between-map-apply-map_async-apply_async/
+                pool.apply_async(process_chunk_ML, 
+                                 args=(file_processed_in, chunk_start, chunk_size, is_last), 
+                                 callback=partial(collect_result_ML, ML_res))
+            
+            pool.close() # Prevents any more tasks from being submitted to the pool
+            pool.join() # Wait for the worker processes to exit
+        
+        
+        
+        print('Finished parsing the MD-tags, now saving the file')
+        df = save_ML_res(ML_res, filename_mismatch_ML)
+    
+    
+    # load files
+    else:
+        print("Loading 1 core ML dataframe")
+        df = load_ML_res(filename_mismatch_ML)
+
+    return df
+
+
+
+# file1 = filename_mismatch_ML
+# file2 = file1.replace('6cores', '1cores') if cores==6 else file1.replace('1cores', '6cores')
+def compare_multi_core_results(file1, file2, header):
+    df1 = load_ML_res(file1).sort_values(by=header , ascending=False).reset_index(drop=True)
+    df2 = load_ML_res(file2).sort_values(by=header, ascending=False).reset_index(drop=True)
+    pd.testing.assert_frame_equal(df1, df2)
+    return None
+
+
+
+#%% =============================================================================
+#  Process dataframe
+# =============================================================================
+
+
+def get_error_rates(df, string_list):
+    
+    res = []
+    
+    for string in string_list:
+        
+        series = {}
+        n_len = int(df['position'].max())
+        
+        for i in range(n_len):
+            ref = string[0]
+            obs = string[2]
+            i += 1
+        
+            mask_pos = (df['position']== i)
+            mask_ref = (df['ref_base'] == base2index[ref])
+            mask_obs = (df['obs_base'] == base2index[obs])
+            
+            num = df[mask_pos & mask_ref & mask_obs]['counts'].sum()
+            den = df[mask_pos & mask_ref]['counts'].sum()
+            
+            if den == 0:
+                series[i] = 0
+            else:
+                series[i] = num/den
+            
+        res.append(pd.Series(series, name=string))
+        
+    return pd.concat(res, axis=1)
+
+
+
+def get_X_count(df, X):
+    # get only one data point from each read by only taking the first position
+    df_single_read = df[df['position']==1][[X, 'counts']]
+    return df_single_read.groupby(X)['counts'].sum().to_dict()
+
+def get_read_lengt_count(df):
+    return get_X_count(df, 'L')
+
+def get_strand_count(df):
+    return get_X_count(df, 'strand')
+
+
 #%% =============================================================================
 # 
 # =============================================================================
 
 
+
 def is_linux():
     import platform
     return platform.system() == 'Linux'
-
-
-ACGT_names = ['A', 'C', 'G', 'T', 'N', '-', 'Other']
-# ACGT_names = ['A', 'C', 'G', 'T', 'N']
-base2index = {val: i for i, val in enumerate(ACGT_names)}
-
-# http://www.dnabaser.com/articles/IUPAC%20ambiguity%20codes.html
-IGNORE_LETTERS = 'YRWSKMDVHBXN'
-
-
-MAX_LENGTH = 1000
-
-def init_zero_matrix(ACGT_names):
-    return np.zeros((MAX_LENGTH, 7,7), dtype=int)
-
-
-def fill_mismatch_matrix(ref, seq, mismatch, verbose=True):
-    """ seq1 = ref, seq2 = seq """
-    
-    for i, (s_ref, s_seq) in enumerate(zip(ref, seq)):
-        
-        try:
-            mismatch[i, base2index[s_ref], base2index[s_seq]] += 1
-        
-        except KeyError as e:
-            if s_ref in ACGT_names:
-                if verbose:
-                    print(f'Found {e} in sequence. Ignoring it and using "Other" instead')
-                    # print(f'Found {e} in sequence. Ignoring it and using "N" instead')
-                mismatch[i, base2index[s_ref], base2index['Other']] += 1
-                # mismatch[i, base2index[s_ref], base2index['N']] += 1
-            else:
-                if verbose:
-                    print(f'Found {e} in reference. Ignoring it and using "Other" instead')
-                    # print(f'Found {e} in reference. Ignoring it and using "N" instead')
-                mismatch[i, base2index['Other'], base2index[s_seq]] += 1
-                # mismatch[i, base2index['N'], base2index[s_seq]] += 1
-                
-        i += 1
-    
-    return mismatch
-
-
-# def fill_mismatch_forward_reverse(is_reverse, ref, seq, 
-#                                   mismatch_forward, mismatch_reverse, 
-#                                   verbose=True):
-#     if not is_reverse:
-#         fill_mismatch_matrix(ref, seq, mismatch_forward, verbose=verbose)
-#     else:
-#         fill_mismatch_matrix(ref, seq, mismatch_reverse, verbose=verbose)
-
-
-
-# def dict_count(d, key):
-#     if key in d:
-#         d[key] += 1
-#     else:
-#         d[key] = 1
-#     return None
-
-
-def fill_results(is_reverse, ref, seq, strand, d_res, verbose=True):
-    
-    L = len(seq)
-    d_res['strand'][strand] += 1
-    
-    # forward
-    if not is_reverse:
-        fill_mismatch_matrix(ref, seq, d_res['mismatch']['+'], verbose=verbose)
-        d_res['lengths']['+'][L] += 1
-    
-    # reverse
-    else:
-        fill_mismatch_matrix(ref, seq, d_res['mismatch']['-'], verbose=verbose)
-        d_res['lengths']['-'][L] += 1
-
-    return None
-
-
-# =============================================================================
-# 
-# =============================================================================
-
-
-def calc_ACGT_content(mismatch1, mismatch2=None):
-    mismatch = mismatch1[:, :4, :4]
-    if isinstance(mismatch2, np.ndarray):
-        mismatch += mismatch2[:, :4, :4]
-    total_sum = mismatch.flatten().sum()
-    return mismatch.sum(0).sum(1)/total_sum
-
-
-def mismatch_to_dataframe_collapsed(mismatch):
-    
-    ref_names = ['Ref '+s for s in ACGT_names]
-    read_names = ['Read '+s for s in ACGT_names]
-    
-    df = pd.DataFrame(mismatch.sum(0), index=ref_names, columns=read_names)
-    return df
-
-
-def mismatch_to_error_rate(mismatch):
-    diag_sum = np.diag(mismatch[:4, :4]).sum()
-    sum_all = mismatch[:4, :4].sum()
-    
-    e_all = 1 - diag_sum / sum_all
-    e_C2T = mismatch[base2index['C'], base2index['T']] / mismatch[base2index['C'], :].sum()
-    e_G2A = mismatch[base2index['G'], base2index['A']] / mismatch[base2index['G'], :].sum()
-    return (e_all, e_C2T, e_G2A)
-
-
-def get_error_rates_dataframe(mismatch, max_len=None):
-    
-    if max_len is None:
-        max_len = mismatch.shape[0]
-    
-    d_error_rates = {}
-    for i in range(max_len):
-        
-        p = mismatch_to_error_rate(mismatch[i, :, :])
-        (e_all, e_C2T, e_G2A) = p
-        
-        d_error_rates[i] = {
-                              # 'all':    e_all, 
-                              'C2T':    e_C2T, 
-                              'G2A':    e_G2A, 
-                              }
-        
-    df_error_rates = pd.DataFrame(d_error_rates).T
-    return df_error_rates.sort_index()
-
-
-
 
 def phred_symbol_to_Q_score(s):
     Q = ord(s)-33

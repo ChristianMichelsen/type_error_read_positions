@@ -10,23 +10,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from tqdm import tqdm
-# import re
-# from prepare_reads_v3 import (do_correct_file_if_not_exists, 
-#                            get_corrected_filename, 
-#                            # file_length,
-#                            )
 
 from src.data.prepare_reads import get_filename_and_lenght 
 from src.extra_functions import (
-                                 get_error_rates_dataframe, 
                                  is_linux,
-                                  build_alignment_reference_seq,
-                                  correct_reverse_strans,
-                                  fill_results,
-                                 _read_txtfile,
-                                 calc_ACGT_content,
-                                 MAX_LENGTH,
-                                 mismatch_to_dataframe_collapsed,
+                                 get_ML_res,
+                                 get_error_rates,
+                                 get_read_lengt_count,
+                                 get_strand_count,
                                  )
 
 
@@ -63,337 +54,32 @@ elif do == 'gargamel':
     refname = 'horse_chrom31.fa'
 
 
-
-
 plot_prefix = f"../figures/{filename.split('_')[0]}_plot_"
-
-
-def append_corrected_to_filename(filename):
-    return filename.replace('.txt', '_corrected.txt')
-
-def get_filename_input(filename):
-    return f'../data/raw/{filename}'
-def get_filename_output(filename):
-    return f'../data/processed/{append_corrected_to_filename(filename)}'
-def get_filename_processed(filebame):
-    return get_filename_output(filename)
-
-file_processed_in = get_filename_processed(filename)
-file_bam_in = get_filename_input(filename_bam)
-ref_in = get_filename_input(refname)
-
-
-_, N_reads = get_filename_and_lenght(filename)
+file_processed_in, N_reads = get_filename_and_lenght(filename)
 
 
 #%% =============================================================================
-# 
+#  Compare own reading with mapDamage reads from bam-file
 # =============================================================================
 
 if False:
     
-    # import pysam
-    # from datetime import datetime
     from mapdamage_custom import mapDamage_main_test
-    
-    mapDamage_main_test(ref_in, file_bam_in, file_processed_in)
-
-
-
-#%% =============================================================================
-# #
-# =============================================================================
+    mapDamage_main_test(refname, filename_bam, filename)
 
 
 #%% =============================================================================
 # https://www.blopig.com/blog/2016/08/processing-large-files-using-python/
 # =============================================================================
 
-
-import multiprocessing as mp, os
-from functools import partial
-
-def save_d_res(d_res, filename_mismatch):
-    max_l = max([max(d_res['lengths'][i].keys()) for i in ['+', '-']])
-    for i in ['+', '-']:
-        d_res['mismatch'][i] = d_res['mismatch'][i][:max_l, :, :]
-    with open(filename_mismatch, 'wb') as file:  
-        pickle.dump(d_res, file)
-    return None
-
-def load_d_res(filename_mismatch):
-    with open(filename_mismatch, 'rb') as file:  
-        d_res = pickle.load(file)    
-    return d_res
-
-
-from collections import Counter
-def init_d():
-    d = {'mismatch': {'+': np.zeros((MAX_LENGTH, 7,7), dtype=int), 
-                      '-': np.zeros((MAX_LENGTH, 7,7), dtype=int)},
-         'lengths':  {'+': Counter(), 
-                      '-': Counter()}, 
-         'strand': Counter(),
-         }
-    return d
-
-
-def process_line(line_txt, d_res):
-    strand, cigar, read, md_tag = line_txt
-    seq, ref = build_alignment_reference_seq(read, cigar, md_tag)
-    is_reverse, ref, seq = correct_reverse_strans(strand, seq, ref)
-    fill_results(is_reverse, ref, seq, strand, d_res, verbose=True)
-    return None
-
-
-# =============================================================================
-# 
-# =============================================================================
-
-
-ACGT_names = ['A', 'C', 'G', 'T', 'N', '0']
-base2index = {val: i for i, val in enumerate(ACGT_names)}
-
-strand2index = {'+': 1, '-': 0}
-is_reverse2index = {True: 0, False: 1}
-
-def ACGTN_correct_string(string):
-    """
-    Corrects a string such that it only contains characters from ACGT_names
-    else replace the character with an 'N'.     
-    """
-    return ''.join(char if char in ACGT_names else 'N' for char in string)
-
-
-# def tidy_ML_seq_ref_data(ref, seq, is_reverse, res):
-def tidy_ML_seq_ref_data(ref, seq, strand, res):
-    
-    seq = ACGTN_correct_string(seq)
-    ref = ACGTN_correct_string(ref)
-    
-    for i, (s_ref, s_seq) in enumerate(zip(ref, seq)):
-        if i == 0:
-            prev_ref_base = '0'
-        else:
-            prev_ref_base = ref[i-1]
-            
-        # res.append((base2index[s_seq], base2index[prev_ref_base], i+1, 
-                    # is_reverse2index[is_reverse], base2index[s_ref]))
-        
-        # res[((base2index[s_seq], base2index[prev_ref_base], i+1, 
-        #             is_reverse2index[is_reverse], base2index[s_ref]))] += 1
-        
-        obs_base = base2index[s_seq]
-        prev_ref_base = base2index[prev_ref_base]
-        position = i+1
-        # strand = is_reverse2index[is_reverse]
-        length = len(seq)
-        ref_base = base2index[s_ref]
-        # is_mismatch = (obs_base != ref_base)
-        
-        res[(obs_base, prev_ref_base, position, strand, ref_base, length)] += 1
-    
-    return None
-    
-
-# def tidy_ML_seq_ref_data(ref, seq, is_reverse):
-    
-#     seq = ACGTN_correct_string(seq)
-#     ref = ACGTN_correct_string(ref)
-    
-#     for i, (s_ref, s_seq) in enumerate(zip(ref, seq)):
-#         if i == 0:
-#             prev_ref_base = '0'
-#         else:
-#             prev_ref_base = ref[i-1]
-            
-#         yield (base2index[s_seq], base2index[prev_ref_base], i+1, 
-#                     is_reverse2index[is_reverse], base2index[s_ref])
-        
-
-
-def process_line_tidy_ML(line_txt, res):
-    strand, cigar, read, md_tag = line_txt
-    seq, ref = build_alignment_reference_seq(read, cigar, md_tag)
-    is_reverse, ref, seq = correct_reverse_strans(strand, seq, ref)
-    # strand = '-' if is_reverse else '+'
-    # tidy_ML_seq_ref_data(ref, seq, is_reverse, res)
-    tidy_ML_seq_ref_data(ref, seq, strand, res)
-    # tidy_ML_seq_ref_data(ref, seq, strand, res)
-    # return None
-
-
-# =============================================================================
-# 
-# =============================================================================
-
-
-def process_chunk(chunk_start, chunk_size, is_last):
-    d_res = init_d()
-    with open(file_processed_in) as f:
-        f.seek(chunk_start)
-        lines = f.read(chunk_size).splitlines()
-        it = enumerate(_read_txtfile(lines))
-        if is_last:
-        # if True:
-            it = tqdm(it, total=len(lines))
-        for iline, line_txt in it:
-            process_line(line_txt, d_res)
-    return d_res
-
-
-def chunkify(fname, cores):
-    file_end = os.path.getsize(fname)
-    if cores == 1:
-        yield 0, file_end
-    else:
-        size = file_end // cores
-        with open(fname, 'r') as f:
-            chunkEnd = f.tell()
-            while True:
-                chunk_start = chunkEnd
-                f.seek(chunk_start+size)
-                f.readline()
-                chunkEnd = f.tell()
-                chunk_size = chunkEnd - chunk_start
-                
-                is_last = True if chunkEnd > file_end else False
-                
-                yield chunk_start, chunk_size, is_last
-                if chunkEnd > file_end:
-                    break
-
-
-def collect_result(d_res, d_chunk):
-    for i in ['+', '-']:
-        d_res['mismatch'][i] += d_chunk['mismatch'][i]
-        d_res['lengths'][i] += d_chunk['lengths'][i]
-    d_res['strand'] += d_chunk['strand']
-    return None
-
-
-
-import pickle
-from pathlib import Path
-
-filename_mismatch = file_processed_in.replace(f'corrected.txt', 
-                                              f'mismatch_results_{cores}cores.pkl')
-filename_mismatch_ML = filename_mismatch.replace('.pkl', '_ML.pkl')
-
-
-
-header = ['obs_base', 'prev_ref_base', 'position', 'strand', 'ref_base', 'L', 'counts']
-
-
-
-if not Path(filename_mismatch_ML).is_file() or force_rerun:
-    
-    print(f"Parsing MD-tags to get mismatch matrix using {cores} cores", flush=True)
-    
-    
-    if cores == 1:
-        
-        # res = []
-        ML_res = Counter()
-    
-        with open(file_processed_in, 'r') as f_processed:    
-            # current_length = 0
-            for iline, line_txt in tqdm(enumerate(_read_txtfile(f_processed)), 
-                                        total=N_reads):
-                process_line_tidy_ML(line_txt, ML_res)
-        
-        # converts Counter dict to list of tuples that Pandas can read 
-        df = []
-        for key, val in dict(ML_res).items():
-            df.append((*key, val))
-        
-        # create dataframe from list of tuples
-        df = pd.DataFrame(df, columns=header)
-        
-        #downcast to unsigned integers (since always positive counts)
-        for col in df:
-            df.loc[:, col] = pd.to_numeric(df[col], downcast='unsigned')
-            
-        # save dataframe
-        df.to_pickle(filename_mismatch_ML)
-        
-    else:
-        print("More cores in ML analysis not implemented yet")
-        assert False
-            
-            # #init objects
-            # pool = mp.Pool(cores)
-            
-            # #create jobs
-            # for chunk_start, chunk_size, is_last in chunkify(file_processed_in, 10*cores):
-            #     # print(chunk_start, chunk_size)
-            #     #http://blog.shenwei.me/python-multiprocessing-pool-difference-between-map-apply-map_async-apply_async/
-            #     pool.apply_async(process_chunk, args=(chunk_start, chunk_size, is_last), 
-            #                      callback=partial(collect_result, d_res))
-            
-            # pool.close() # Prevents any more tasks from being submitted to the pool
-            # pool.join() # Wait for the worker processes to exit
-            
-    # print('Finished parsing the MD-tags, now saving the file')
-    # save_d_res(d_res, filename_mismatch)
-
-
-# load files
-else:
-    print("Loading 1 core ML dataframe")
-    df = pd.read_pickle(filename_mismatch_ML)
-
+df = get_ML_res(file_processed_in, cores, force_rerun, N_reads)
 
 
 df_forward = df.loc[((df['strand'] & 0x10) == 0)]
 df_reverse = df.loc[((df['strand'] & 0x10) != 0)]
 
-
-def get_error_rates(df, string_list):
-    
-    res = []
-    
-    for string in string_list:
-        
-        series = {}
-        n_len = int(df['position'].max())
-        
-        for i in range(n_len):
-            ref = string[0]
-            obs = string[2]
-            i += 1
-        
-            mask_pos = (df['position']== i)
-            mask_ref = (df['ref_base'] == base2index[ref])
-            mask_obs = (df['obs_base'] == base2index[obs])
-            
-            num = df[mask_pos & mask_ref & mask_obs]['counts'].sum()
-            den = df[mask_pos & mask_ref]['counts'].sum()
-            
-            if den == 0:
-                series[i] = 0
-            else:
-                series[i] = num/den
-            
-        res.append(pd.Series(series, name=string))
-        
-    return pd.concat(res, axis=1)
-
-
 df_error_rate_forward = get_error_rates(df_forward, ['C2T', 'G2A'])
 df_error_rate_reverse = get_error_rates(df_reverse, ['C2T', 'G2A'])
-
-
-def get_X_count(df, X):
-    # get only one data point from each read by only taking the first position
-    df_single_read = df[df['position']==1][[X, 'counts']]
-    return df_single_read.groupby(X)['counts'].sum().to_dict()
-
-def get_read_lengt_count(df):
-    return get_X_count(df, 'L')
-
-def get_strand_count(df):
-    return get_X_count(df, 'strand')
 
 
 d_lengths_count_forward = get_read_lengt_count(df_forward)
