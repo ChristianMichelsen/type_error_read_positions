@@ -1,8 +1,0 @@
-# table produced by mapDamage version 2.0.8-dirty
-# using mapped file out/aln.bam and data/endo/horse_chrom31.fa as reference file
-# Std: strand of reads
-Std	Length	Occurences 
-+	34	55
-+	35	50209
--	34	45
--	35	49691

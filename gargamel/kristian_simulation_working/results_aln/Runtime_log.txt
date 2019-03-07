@@ -1,4 +1,0 @@
-2019-03-06 12:52:16,379	INFO	main: Started with the command: /usr/local/bin/mapDamage --no-stats -i out/aln.bam -r data/endo/horse_chrom31.fa -n 100000
-2019-03-06 12:52:25,496	DEBUG	main: BAM read in 10.929448 seconds
-2019-03-06 12:52:26,317	INFO	main: Successful run
-2019-03-06 12:52:26,317	DEBUG	main: Run completed in 11.750678 seconds

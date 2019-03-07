@@ -33,7 +33,7 @@ from src.extra_functions import (
 save_plots = True
 
 do = 'ancient'
-# do = 'modern'
+do = 'modern'
 do = 'gargamel'
 
 
@@ -158,12 +158,15 @@ strand2index = {'+': 1, '-': 0}
 is_reverse2index = {True: 0, False: 1}
 
 def ACGTN_correct_string(string):
+    """
+    Corrects a string such that it only contains characters from ACGT_names
+    else replace the character with an 'N'.     
+    """
     return ''.join(char if char in ACGT_names else 'N' for char in string)
 
 
-
-
-def tidy_ML_seq_ref_data(ref, seq, is_reverse, res):
+# def tidy_ML_seq_ref_data(ref, seq, is_reverse, res):
+def tidy_ML_seq_ref_data(ref, seq, strand, res):
     
     seq = ACGTN_correct_string(seq)
     ref = ACGTN_correct_string(ref)
@@ -183,13 +186,12 @@ def tidy_ML_seq_ref_data(ref, seq, is_reverse, res):
         obs_base = base2index[s_seq]
         prev_ref_base = base2index[prev_ref_base]
         position = i+1
-        strand = is_reverse2index[is_reverse]
+        # strand = is_reverse2index[is_reverse]
+        length = len(seq)
         ref_base = base2index[s_ref]
-        is_mismatch = (obs_base != ref_base)
+        # is_mismatch = (obs_base != ref_base)
         
-        res[(obs_base, prev_ref_base, position, strand, ref_base, is_mismatch)] += 1
-    
-    
+        res[(obs_base, prev_ref_base, position, strand, ref_base, length)] += 1
     
     return None
     
@@ -215,7 +217,8 @@ def process_line_tidy_ML(line_txt, res):
     seq, ref = build_alignment_reference_seq(read, cigar, md_tag)
     is_reverse, ref, seq = correct_reverse_strans(strand, seq, ref)
     # strand = '-' if is_reverse else '+'
-    tidy_ML_seq_ref_data(ref, seq, is_reverse, res)
+    # tidy_ML_seq_ref_data(ref, seq, is_reverse, res)
+    tidy_ML_seq_ref_data(ref, seq, strand, res)
     # tidy_ML_seq_ref_data(ref, seq, strand, res)
     # return None
 
@@ -270,20 +273,6 @@ def collect_result(d_res, d_chunk):
 
 
 
-import h5py
-# with h5py.File('several_datasets.hdf5', 'a') as f_out:
-#    dset_int_1 = f_out.create_dataset('integers', (None, 5), dtype='i1')
-#    dset.resize(20, axis=0)   # or dset.resize((20,1024))
-
-# # with open('AE_data.dat', 'wb') as f_out:
-# #     np.savetxt(f, [], header=header)
-# #     for i in range(201):
-# #         data = np.column_stack((x[i], y[i]))
-# #         np.savetxt(f, data)
-# #         f.flush()
-# #         sleep(0.1)
-
-
 import pickle
 from pathlib import Path
 
@@ -293,184 +282,125 @@ filename_mismatch_ML = filename_mismatch.replace('.pkl', '_ML.pkl')
 
 
 
-header = ['obs_base', 'prev_ref_base', 'position', 'strand', 'ref_base', 'is_mismatch', 'counts']
-
-do_mapDamage_analysis = True
-do_ML_analysis = True
+header = ['obs_base', 'prev_ref_base', 'position', 'strand', 'ref_base', 'L', 'counts']
 
 
-if do_mapDamage_analysis:
+
+if not Path(filename_mismatch_ML).is_file() or force_rerun:
     
-    if not Path(filename_mismatch).is_file() or force_rerun:
+    print(f"Parsing MD-tags to get mismatch matrix using {cores} cores", flush=True)
     
-        d_res = init_d()
+    
+    if cores == 1:
         
-        if cores == 1:
-            
-            with open(file_processed_in, 'r') as f_processed:
-                for iline, line_txt in tqdm(enumerate(_read_txtfile(f_processed)), 
-                                            total=N_reads):
-                    process_line(line_txt, d_res)
-        else:
-            
-            #init objects
-            pool = mp.Pool(cores)
-            
-            #create jobs
-            for chunk_start, chunk_size, is_last in chunkify(file_processed_in, 10*cores):
-                # print(chunk_start, chunk_size)
-                #http://blog.shenwei.me/python-multiprocessing-pool-difference-between-map-apply-map_async-apply_async/
-                pool.apply_async(process_chunk, args=(chunk_start, chunk_size, is_last), 
-                                 callback=partial(collect_result, d_res))
-            
-            pool.close() # Prevents any more tasks from being submitted to the pool
-            pool.join() # Wait for the worker processes to exit
-            
-        print('Finished parsing the MD-tags, now saving the file')
-        save_d_res(d_res, filename_mismatch)
-
+        # res = []
+        ML_res = Counter()
     
+        with open(file_processed_in, 'r') as f_processed:    
+            # current_length = 0
+            for iline, line_txt in tqdm(enumerate(_read_txtfile(f_processed)), 
+                                        total=N_reads):
+                process_line_tidy_ML(line_txt, ML_res)
+        
+        # converts Counter dict to list of tuples that Pandas can read 
+        df = []
+        for key, val in dict(ML_res).items():
+            df.append((*key, val))
+        
+        # create dataframe from list of tuples
+        df = pd.DataFrame(df, columns=header)
+        
+        #downcast to unsigned integers (since always positive counts)
+        for col in df:
+            df.loc[:, col] = pd.to_numeric(df[col], downcast='unsigned')
+            
+        # save dataframe
+        df.to_pickle(filename_mismatch_ML)
+        
     else:
-        
-        print("Loading custom mapDamage results")
-        d_res = load_d_res(filename_mismatch)
-
-
-
-if do_ML_analysis:
-
-    if not Path(filename_mismatch_ML).is_file() or force_rerun:
-        
-        print(f"Parsing MD-tags to get mismatch matrix using {cores} cores", flush=True)
-        
-        
-        if cores == 1:
+        print("More cores in ML analysis not implemented yet")
+        assert False
             
-            # res = []
-            ML_res = Counter()
+            # #init objects
+            # pool = mp.Pool(cores)
+            
+            # #create jobs
+            # for chunk_start, chunk_size, is_last in chunkify(file_processed_in, 10*cores):
+            #     # print(chunk_start, chunk_size)
+            #     #http://blog.shenwei.me/python-multiprocessing-pool-difference-between-map-apply-map_async-apply_async/
+            #     pool.apply_async(process_chunk, args=(chunk_start, chunk_size, is_last), 
+            #                      callback=partial(collect_result, d_res))
+            
+            # pool.close() # Prevents any more tasks from being submitted to the pool
+            # pool.join() # Wait for the worker processes to exit
+            
+    # print('Finished parsing the MD-tags, now saving the file')
+    # save_d_res(d_res, filename_mismatch)
+
+
+# load files
+else:
+    print("Loading 1 core ML dataframe")
+    df = pd.read_pickle(filename_mismatch_ML)
+
+
+
+df_forward = df.loc[((df['strand'] & 0x10) == 0)]
+df_reverse = df.loc[((df['strand'] & 0x10) != 0)]
+
+
+def get_error_rates(df, string_list):
+    
+    res = []
+    
+    for string in string_list:
         
-            with open(file_processed_in, 'r') as f_processed:    
-                # current_length = 0
-                for iline, line_txt in tqdm(enumerate(_read_txtfile(f_processed)), 
-                                            total=N_reads):
-                    process_line_tidy_ML(line_txt, ML_res)
-            
-            # converts Counter dict to list of tuples that Pandas can read 
-            df = []
-            for key, val in dict(ML_res).items():
-                df.append((*key, val))
-            
-            # create dataframe from list of tuples
-            df = pd.DataFrame(df, columns=header)
-            
-            #downcast to unsigned integers (since always positive counts)
-            for col in df:
-                df.loc[:, col] = pd.to_numeric(df[col], downcast='unsigned')
-                
-            # save dataframe
-            df.to_pickle(filename_mismatch_ML)
-            
-        else:
-            print("More cores in ML analysis not implemented yet")
-            assert False
-                
-                # #init objects
-                # pool = mp.Pool(cores)
-                
-                # #create jobs
-                # for chunk_start, chunk_size, is_last in chunkify(file_processed_in, 10*cores):
-                #     # print(chunk_start, chunk_size)
-                #     #http://blog.shenwei.me/python-multiprocessing-pool-difference-between-map-apply-map_async-apply_async/
-                #     pool.apply_async(process_chunk, args=(chunk_start, chunk_size, is_last), 
-                #                      callback=partial(collect_result, d_res))
-                
-                # pool.close() # Prevents any more tasks from being submitted to the pool
-                # pool.join() # Wait for the worker processes to exit
-                
-        # print('Finished parsing the MD-tags, now saving the file')
-        # save_d_res(d_res, filename_mismatch)
-
-
-    # load files
-    else:
-        print("Loading 1 core ML dataframe")
-        df = pd.read_pickle(filename_mismatch_ML)
+        series = {}
+        n_len = int(df['position'].max())
         
-
-x=x
-
-
-
-
-df.loc[df['strand']==0, []]
-
-
-
-
-
-
-#%% =============================================================================
-# 
-# =============================================================================
-
-
-
-
-
-import numpy_indexed as npi
-with h5py.File('several_datasets.hdf5', 'r') as f_in:
-    print(f_in['data'].shape, flush=True)
-    d = f_in['data'][:100_000_000]
-    
-    d2 = np.ones((d.shape[0], d.shape[1]+1), dtype='uint8')
-    d2[:, :-1] = d
-    
-    is_mismatch = (d[:, 0] != d[:, 4])
-    d2[is_mismatch, -1] = int(1/(is_mismatch.sum() / len(is_mismatch)))
-    
-    groupby = npi.group_by(d2)
-    
-    df = pd.DataFrame(groupby.unique, columns=header+['mismach_weight'], dtype=np.uint8)
-    df['count'] = pd.to_numeric(groupby.count, downcast='unsigned')
-
-df
-
-d_res = load_d_res(filename_mismatch)
+        for i in range(n_len):
+            ref = string[0]
+            obs = string[2]
+            i += 1
+        
+            mask_pos = (df['position']== i)
+            mask_ref = (df['ref_base'] == base2index[ref])
+            mask_obs = (df['obs_base'] == base2index[obs])
+            
+            num = df[mask_pos & mask_ref & mask_obs]['counts'].sum()
+            den = df[mask_pos & mask_ref]['counts'].sum()
+            
+            if den == 0:
+                series[i] = 0
+            else:
+                series[i] = num/den
+            
+        res.append(pd.Series(series, name=string))
+        
+    return pd.concat(res, axis=1)
 
 
-
-mismatch_forward = d_res['mismatch']['+']
-mismatch_reverse = d_res['mismatch']['-']
-
-df_mismatch_collapsed_forward = mismatch_to_dataframe_collapsed(mismatch_forward)
-df_mismatch_collapsed_reverse = mismatch_to_dataframe_collapsed(mismatch_reverse)
-
-df_error_rates_forward = get_error_rates_dataframe(mismatch_forward, max_len=30)
-df_error_rates_reverse = get_error_rates_dataframe(mismatch_reverse, max_len=30)
-
-ACGT_content = calc_ACGT_content(mismatch_forward, mismatch_reverse)
+df_error_rate_forward = get_error_rates(df_forward, ['C2T', 'G2A'])
+df_error_rate_reverse = get_error_rates(df_reverse, ['C2T', 'G2A'])
 
 
+def get_X_count(df, X):
+    # get only one data point from each read by only taking the first position
+    df_single_read = df[df['position']==1][[X, 'counts']]
+    return df_single_read.groupby(X)['counts'].sum().to_dict()
+
+def get_read_lengt_count(df):
+    return get_X_count(df, 'L')
+
+def get_strand_count(df):
+    return get_X_count(df, 'strand')
 
 
-def compare_two_d_res_dicts(file1, file2):
-    
-    d_res1 = load_d_res(file1)
-    d_res2 = load_d_res(file2)
-    
-    assert d_res1['strand'] == d_res2['strand']
+d_lengths_count_forward = get_read_lengt_count(df_forward)
+d_lengths_count_reverse = get_read_lengt_count(df_reverse)
 
-    assert d_res1['lengths']['+'] == d_res2['lengths']['+']
-    assert d_res1['lengths']['-'] == d_res2['lengths']['-']
+d_strand_count = get_strand_count(df)
 
-    assert np.array_equal(d_res1['mismatch']['+'], d_res2['mismatch']['+'])
-    assert np.array_equal(d_res1['mismatch']['-'], d_res2['mismatch']['-'])
-    
-
-other_file = (filename_mismatch.replace('1cores', '6cores') if cores == 1 
-              else filename_mismatch.replace('6cores', '1cores'))
-compare_two_d_res_dicts(filename_mismatch, other_file)
-    
 
 #%% =============================================================================
 # Error rate plots
@@ -478,7 +408,7 @@ compare_two_d_res_dicts(filename_mismatch, other_file)
 
 if not is_linux() and do_plotting:
     
-    names = [col for col in df_error_rates_forward.columns if not '_s' in col]
+    names = df_error_rate_forward.columns
     
     fig_error, ax_error = plt.subplots(1, 2, figsize=(10, 6))
     ax_error = ax_error.flatten()
@@ -486,8 +416,8 @@ if not is_linux() and do_plotting:
     for i, (ax, name) in enumerate(zip(ax_error, names)):
         
         for strand, df_error_rates in zip(['Forward', 'Reverse'], 
-                                          [df_error_rates_forward, 
-                                           df_error_rates_reverse]):
+                                          [df_error_rate_forward, 
+                                           df_error_rate_reverse]):
             x = df_error_rates.index
             y = df_error_rates.loc[:, name]
             ax.plot(x, y, '-', label=strand)
@@ -508,20 +438,17 @@ if not is_linux() and do_plotting:
 # =============================================================================
     
     
-    c_forward = d_res['lengths']['+']
-    c_reverse = d_res['lengths']['-']
-    len_max = max([max(d.keys()) for d in [c_forward, c_reverse]])
-    len_min = min([min(d.keys()) for d in [c_forward, c_reverse]])
-    
+    len_max = max([max(d.keys()) for d in [d_lengths_count_forward, d_lengths_count_reverse]])
+    len_min = min([min(d.keys()) for d in [d_lengths_count_forward, d_lengths_count_reverse]])
     
     fig_read_length, ax_read_length = plt.subplots(figsize=(10, 6))
     histrange = (len_min-1, len_max+1)
     width = 0.4
-    keys_forward = np.fromiter(c_forward.keys(), dtype=int)
-    keys_reverse = np.fromiter(c_reverse.keys(), dtype=int)
+    keys_forward = np.fromiter(d_lengths_count_forward.keys(), dtype=int)
+    keys_reverse = np.fromiter(d_lengths_count_reverse.keys(), dtype=int)
     
-    ax_read_length.bar(keys_forward-width/2, c_forward.values(), width, label='Forward')
-    ax_read_length.bar(keys_reverse+width/2, c_reverse.values(), width, label='Reverse')
+    ax_read_length.bar(keys_forward-width/2, d_lengths_count_forward.values(), width, label='Forward')
+    ax_read_length.bar(keys_reverse+width/2, d_lengths_count_reverse.values(), width, label='Reverse')
     
     ax_read_length.set(xlabel='Read Lenght', ylabel='Counts', 
                        title='Counts of read lenghts',
@@ -540,13 +467,11 @@ if not is_linux() and do_plotting:
 # =============================================================================
     
     
-    c_strands = d_res['strand']
-    
     fig_strands, ax_strands = plt.subplots(figsize=(20, 6))
     
-    keys = np.fromiter(c_strands.keys(), dtype=int)
-    x = np.arange(len(c_strands))
-    ax_strands.bar(x, c_strands.values())
+    keys = np.fromiter(d_strand_count.keys(), dtype=int)
+    x = np.arange(len(d_strand_count))
+    ax_strands.bar(x, d_strand_count.values())
     ax_strands.set(xlabel='Strand flag', ylabel='Counts', 
            title='Counts of strand flags')
     ax_strands.set_xticks(x)
