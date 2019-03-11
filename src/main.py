@@ -19,6 +19,8 @@ from src.extra_functions import (
                                  get_read_lengt_count,
                                  get_strand_count,
                                  plot_confusion_matrix,
+                                 remove_Ns,
+                                 precision_recall_bla_to_df,
                                  )
 
 
@@ -32,9 +34,9 @@ do = 'gargamel'
 verbose = True
 force_rerun = False
 do_plotting = True
+do_remove_Ns = True
 
-
-cores = 1
+cores = 6
 
 
 if do == 'ancient':
@@ -51,7 +53,6 @@ elif do == 'modern':
 elif do == 'gargamel':
     print("\nRunning on gargamel simulated DNA")
     filename = 'gargamel_1_000_000.txt'
-    filename = 'out_gargamel_1_000_000.txt'
     filename_bam = 'gargamel_1_000_000.bam'
     refname = 'horse_chrom31.fa'
 
@@ -76,6 +77,8 @@ if False:
 
 df = get_ML_res(file_processed_in, cores, force_rerun, N_reads, N_splits=100)
 
+if do_remove_Ns:
+    df = remove_Ns(df)
 
 df_forward = df.loc[((df['strand'] & 0x10) == 0)]
 df_reverse = df.loc[((df['strand'] & 0x10) != 0)]
@@ -90,119 +93,14 @@ d_lengths_count_reverse = get_read_lengt_count(df_reverse)
 d_strand_count = get_strand_count(df)
 
 
+x=x
 
 #%% =============================================================================
 # 
 # =============================================================================
 
-x=x
-
-# The input X has wrong shape. For MultinomialHMM X must have shape (n_samples, 1), since the observations are 1-D.
-
-
-
-from hmmlearn import hmm
-np.random.seed(42)
-
-model = hmm.MultinomialHMM(n_components=3)
-model.startprob_ = np.array([0.3, 0.4, 0.3])
-model.transmat_ = np.array([[0.2, 0.6, 0.2],
-                            [0.4, 0.0, 0.6],
-                            [0.1, 0.2, 0.7]])
-model.emissionprob_ = np.array([[0.2, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
-                                [0.1, 0.1, 0.1, 0.1, 0.2, 0.1, 0.1, 0.1, 0.1],
-                                [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2]])
-X, Z = model.sample(100)
-
-    
-    
-# # Predict the optimal sequence of internal hidden state
-# X = np.atleast_2d([3, 4, 5, 6, 7]).T
-# print(model.decode(X))
-
-
-
-X1 = [[0.5], [1.0], [-1.0], [0.42], [0.24]]
-X2 = [[2.4], [4.2], [0.5], [-0.24]]
-X = np.concatenate([X1, X2])
-lengths = [len(X1), len(X2)]
-
-
-
-
-
-x = df[df['position']==1][['ref_base', 'obs_base']].values
-# x_tuple = [(i[0], i[1]) for i in x]
-weights = df[df['position']==1]['counts'].values
-
-
-N = 100
-sample_indices = np.random.choice(len(x), size=100, replace=True, p=weights/weights.sum())
-sample = x[sample_indices].flatten().reshape((-1, 1))
-X = sample
-X = X[:10]
-X = np.array([[0,1, 0,0, 0,0, 0,1, 1,0, 0,0]]).T
-
-
-
-n_components = len(np.unique(X))
-lengths = [2 for x in range(len(X)//2)]
-
-
-remodel = hmm.MultinomialHMM(n_components=n_components, n_iter=100)
-remodel.fit(X, lengths)
-
-remodel.emissionprob_.round(3)
-remodel.transmat_.round(3)
-
-# Z2 = remodel.predict(X)
-
-
-
-
-
-
-import numpy as np
-from hmmlearn import hmm
-
-states = ["Rainy", "Sunny"]
-n_states = len(states)
-
-observations = ["walk", "shop", "clean"]
-n_observations = len(observations)
-
-model = hmm.MultinomialHMM(n_components=n_states, init_params="")
-model.startprob_ = np.array([0.6, 0.4])
-model.transprob_ = np.array([
-  [0.7, 0.3],
-  [0.4, 0.6]
-])
-model.emissionprob_ = np.array([
-  [0.1, 0.4, 0.5],
-  [0.6, 0.3, 0.1]
-])
-
-# predict a sequence of hidden states based on visible states
-bob_says = np.array([[0, 2, 1, 1, 2, 0]]).T
-
-
-model = model.fit(bob_says.T)
-
-
-
-logprob, alice_hears = model.decode(bob_says, algorithm="viterbi")
-print("Bob says:", ", ".join([observations[x] for x in bob_says.T[0]]))
-print("Alice hears:", ", ".join([states[x] for x in alice_hears]))
-
-
-
-#%%
-
-
-
 
 from extra_functions import base2index, ACGT_names
-
 
 def get_transmission_emission_matrices(df, max_len=30):
     
@@ -256,7 +154,7 @@ def get_transmission_emission_matrices(df, max_len=30):
 A_forward, E_forward = get_transmission_emission_matrices(df_forward)
 A_reverse, E_reverse = get_transmission_emission_matrices(df_reverse)
 
-
+x=x
 
 #%% =============================================================================
 # Error rate plots
@@ -346,6 +244,7 @@ if not is_linux() and do_plotting:
 # 
 # =============================================================================
 
+
 from sklearn.metrics import roc_curve, auc
 from sklearn.preprocessing import label_binarize
 from scipy import interp
@@ -414,43 +313,59 @@ def ROC_curve(y_test, y_pred_proba):
 # =============================================================================
 
 
+use_rescaled_weights = False
+
+
 from sklearn.model_selection import train_test_split
 
 y = df.loc[:, 'ref_base']
 X = df.drop(columns='ref_base')
-# y = label_binarize(y, classes=[0, 1, 2, 3, 4])
 
 n_classes = y.nunique()
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
+weights_unscaled = X['counts']
 
+weights_scaled = (df.loc[:, 'obs_base'] == df.loc[:, 'ref_base'])
+mean_weight = np.average(weights_scaled, weights=weights_unscaled)
+
+mask = weights_scaled[:]
+weights_scaled[mask] = mean_weight
+weights_scaled[~mask] = 1/(1-mean_weight)
+
+weights_scaled *= weights_unscaled
+weights_scaled /= weights_scaled.sum() 
+weights_scaled *= weights_unscaled.sum()
+
+
+df['weights_unscaled'] = weights_unscaled
+df['weights_scaled'] = weights_scaled
+
+
+weights = weights_scaled if use_rescaled_weights else weights_unscaled
+    
+weights_train = weights.loc[X_train.index]
+weights_test  = weights.loc[X_test.index]
+
+
+
+#%% =============================================================================
+#  Naive model: true base = observed base
+# =============================================================================
+
+from pycm import ConfusionMatrix #, online_help
+
+# online_help("J")
 
 y_pred_naive = X_test['obs_base']
 
-
-
-
-from pycm import ConfusionMatrix #, online_help
-# online_help("J")
-
-
 cm = ConfusionMatrix(actual_vector=y_test.values, 
                      predict_vector=y_pred_naive.values, 
-                     sample_weight=X_test['counts'].values/1) # Create CM From Data
-
+                     sample_weight=weights_test.values/1) # Create CM From Data
 # cm.relabel(mapping={i: val for i, val in enumerate(ACGT_names[:-1])})
 
 cm_matrix = pd.DataFrame(cm.matrix, dtype=int).values
-
-
-# from sklearn.metrics import confusion_matrix
-from sklearn import metrics
-
-
-# cm = confusion_matrix(y_test, y_pred_naive, sample_weight=X_test['counts'])
-# cm / cm.flatten().sum()
-
 
 fig, ax = plot_confusion_matrix(conf_mat=cm_matrix,
                                 colorbar=True,
@@ -460,18 +375,9 @@ fig, ax = plot_confusion_matrix(conf_mat=cm_matrix,
                                 str_format='.3f',
                                 x_ticks_position='top')
 
-
-
-metrics.accuracy_score(y_test, y_pred_naive, sample_weight=X_test['counts'])
-
-
-metrics.precision_score(y_test, y_pred_naive, average='macro',    sample_weight=X_test['counts'])  
-metrics.recall_score(   y_test, y_pred_naive, average='micro',    sample_weight=X_test['counts'])
-metrics.f1_score(       y_test, y_pred_naive, average='weighted', sample_weight=X_test['counts'])  
-metrics.fbeta_score(    y_test, y_pred_naive, average='macro', beta=0.5, sample_weight=X_test['counts'])  
-metrics.precision_recall_fscore_support(y_test, y_pred_naive, beta=0.5, average=None, sample_weight=X_test['counts'])
-
-
+df_eval_naive = precision_recall_bla_to_df(y_test, y_pred_naive, 
+                                           sample_weight=weights_test)
+    
 
 
 #%% =============================================================================

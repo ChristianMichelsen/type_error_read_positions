@@ -304,6 +304,8 @@ from tqdm import tqdm
 
 ACGT_names = ['A', 'C', 'G', 'T', 'N', '0']
 base2index = {val: i for i, val in enumerate(ACGT_names)}
+index2base = {i: val for i, val in enumerate(ACGT_names)}
+
 
 # strand2index = {'+': 1, '-': 0}
 # is_reverse2index = {True: 0, False: 1}
@@ -529,7 +531,11 @@ def get_strand_count(df):
 # 
 # =============================================================================
 
-
+def remove_Ns(df):
+    mask_Ns = (df['obs_base'] == 4) | (df['ref_base'] == 4) | (df['prev_ref_base'] == 4)
+    frac = df[mask_Ns].counts.sum()/df.counts.sum()
+    print(f"Removing N's from dataframe. This corresponds to {frac:.3%} of all data")
+    return df[~mask_Ns]
 
 def is_linux():
     import platform
@@ -542,6 +548,17 @@ def phred_symbol_to_Q_score(s):
 def Q_score_to_probability(Q):
     P = 10**-(Q/10.0)
     return P
+
+
+from sklearn.metrics import precision_recall_fscore_support
+def precision_recall_bla_to_df(y_test, y_pred, sample_weight=None):
+    
+    df = pd.DataFrame(precision_recall_fscore_support(y_test, y_pred, 
+                                                      average=None, 
+                                                      sample_weight=sample_weight))
+    df.columns = [index2base[i] for i in df.columns]
+    df.index = ['Precision', 'Recall', 'F1-score', 'Support']
+    return df
 
 #% =============================================================================
 # 
