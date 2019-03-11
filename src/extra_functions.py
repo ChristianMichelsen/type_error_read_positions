@@ -352,23 +352,22 @@ def process_line_tidy_ML(line_txt, ML_res):
     return None    
     
 
-def process_chunk_ML(file_processed_in, chunk_start, chunk_size, is_last):
+def process_chunk_ML(file_processed_in, chunk_start, chunk_size): # pbar, i
     ML_res = Counter()
     with open(file_processed_in) as f:
         f.seek(chunk_start)
         lines = f.read(chunk_size).splitlines()
         it = enumerate(_read_txtfile(lines))
-        if is_last:
+        # if is_last:
         # if True:
-            it = tqdm(it, total=len(lines))
+            # it = tqdm(it, total=len(lines))
         for iline, line_txt in it:
             process_line_tidy_ML(line_txt, ML_res)
+            
+            # if i==0:
+            #     pbar.update(iline/len(lines))
     return ML_res
 
-
-def collect_result_ML(ML_res, ML_chunk):
-    ML_res += ML_chunk
-    return None
 
 
 def chunkify(fname, cores):
@@ -386,9 +385,9 @@ def chunkify(fname, cores):
                 chunkEnd = f.tell()
                 chunk_size = chunkEnd - chunk_start
                 
-                is_last = True if chunkEnd > file_end else False
+                # is_last = True if chunkEnd > file_end else False
                 
-                yield chunk_start, chunk_size, is_last
+                yield chunk_start, chunk_size#, is_last
                 if chunkEnd > file_end:
                     break
                 
@@ -414,57 +413,53 @@ def load_ML_res(filename_mismatch_ML):
     return pd.read_pickle(filename_mismatch_ML)
 
 
+def collect_result_ML(ML_res, pbar, i, cores, ML_chunk): 
+    ML_res += ML_chunk
+    if i%cores == 0:
+        pbar.update(1)
+    return None
 
 
-
-def get_ML_res(file_processed_in, cores, force_rerun, N_reads):
+def get_ML_res(file_processed_in, cores, force_rerun, N_reads, N_splits=100):
     
     filename_mismatch_ML = file_processed_in.replace(f'corrected.txt', 
                                     f'mismatch_results_{cores}cores_ML.pkl')
     
     if not Path(filename_mismatch_ML).is_file() or force_rerun:
         
-        print(f"Parsing MD-tags to get mismatch matrix using {cores} cores", flush=True)
-        
+        print(f"Parsing MD-tags using {cores} cores", flush=True)
+        ML_res = Counter()
         
         if cores == 1:
             
-            # res = []
-            ML_res = Counter()
-        
             with open(file_processed_in, 'r') as f_processed:    
-                # current_length = 0
-                for iline, line_txt in tqdm(enumerate(_read_txtfile(f_processed)), 
-                                            total=N_reads):
+                for iline, line_txt in tqdm(enumerate(_read_txtfile(f_processed)), total=N_reads):
                     process_line_tidy_ML(line_txt, ML_res)
             
         else:
-            
-            ML_res = Counter()
-            
-            #init objects
+            #init pool with cores
             pool = mp.Pool(cores)
-            
+            # init tqdm counter
+            pbar = tqdm(total=N_splits)
             #create jobs
-            for chunk_start, chunk_size, is_last in chunkify(file_processed_in, 10*cores):
-                # print(chunk_start, chunk_size, is_last)
+            for i, (chunk_start, chunk_size) in enumerate(chunkify(file_processed_in, N_splits*cores)):
+                # print(chunk_start, chunk_size)
                 #http://blog.shenwei.me/python-multiprocessing-pool-difference-between-map-apply-map_async-apply_async/
                 pool.apply_async(process_chunk_ML, 
-                                 args=(file_processed_in, chunk_start, chunk_size, is_last), 
-                                 callback=partial(collect_result_ML, ML_res))
-            
+                                 args=(file_processed_in, chunk_start, chunk_size), #  pbar, i
+                                 callback=partial(collect_result_ML, ML_res, pbar, i, cores)) # pbar, i
             pool.close() # Prevents any more tasks from being submitted to the pool
             pool.join() # Wait for the worker processes to exit
         
         
         
-        print('Finished parsing the MD-tags, now saving the file')
+        print('\nFinished parsing the MD-tags, now saving the file')
         df = save_ML_res(ML_res, filename_mismatch_ML)
     
     
     # load files
     else:
-        print("Loading 1 core ML dataframe")
+        print("Loading ML dataframe")
         df = load_ML_res(filename_mismatch_ML)
 
     return df
@@ -553,11 +548,126 @@ def Q_score_to_probability(Q):
 # =============================================================================
 
 
+import matplotlib.pyplot as plt
+    
+    
+def plot_confusion_matrix(conf_mat,
+                          hide_spines=False,
+                          hide_ticks=False,
+                          figsize=None,
+                          cmap=None,
+                          colorbar=False,
+                          show_absolute=True,
+                          show_normed=False,
+                          label_names=None,
+                          str_format='.2f',
+                          x_ticks_position='top'):
+    """Plot a confusion matrix via matplotlib.
+    Parameters
+    -----------
+    conf_mat : array-like, shape = [n_classes, n_classes]
+        Confusion matrix from evaluate.confusion matrix.
+    hide_spines : bool (default: False)
+        Hides axis spines if True.
+    hide_ticks : bool (default: False)
+        Hides axis ticks if True
+    figsize : tuple (default: (2.5, 2.5))
+        Height and width of the figure
+    cmap : matplotlib colormap (default: `None`)
+        Uses matplotlib.pyplot.cm.Blues if `None`
+    colorbar : bool (default: False)
+        Shows a colorbar if True
+    show_absolute : bool (default: True)
+        Shows absolute confusion matrix coefficients if True.
+        At least one of  `show_absolute` or `show_normed`
+        must be True.
+    show_normed : bool (default: False)
+        Shows normed confusion matrix coefficients if True.
+        The normed confusion matrix coefficients give the
+        proportion of training examples per class that are
+        assigned the correct label.
+        At least one of  `show_absolute` or `show_normed`
+        must be True.
+    Returns
+    -----------
+    fig, ax : matplotlib.pyplot subplot objects
+        Figure and axis elements of the subplot.
+    Examples
+    -----------
+    For usage examples, please see
+    http://rasbt.github.io/mlxtend/user_guide/plotting/plot_confusion_matrix/
+    """
+    if not (show_absolute or show_normed):
+        raise AssertionError('Both show_absolute and show_normed are False')
 
+    total_samples = conf_mat.sum(axis=1)[:, np.newaxis]
+    normed_conf_mat = conf_mat.astype('float') / total_samples
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.grid(False)
+    if cmap is None:
+        cmap = plt.cm.Blues
+
+    if figsize is None:
+        figsize = (len(conf_mat)*1.25, len(conf_mat)*1.25)
+
+    if show_absolute:
+        matshow = ax.matshow(conf_mat, cmap=cmap)
+    else:
+        matshow = ax.matshow(normed_conf_mat, cmap=cmap)
+
+    if colorbar:
+        fig.colorbar(matshow)
+
+    for i in range(conf_mat.shape[0]):
+        for j in range(conf_mat.shape[1]):
+            cell_text = ""
+            if show_absolute:
+                cell_text += format(conf_mat[i, j], 'd')
+                if show_normed:
+                    cell_text += "\n" + '('
+                    cell_text += format(normed_conf_mat[i, j], str_format) + ')'
+            else:
+                cell_text += format(normed_conf_mat[i, j], str_format)
+            ax.text(x=j,
+                    y=i,
+                    s=cell_text,
+                    va='center',
+                    ha='center',
+                    color="white" if normed_conf_mat[i, j] > 0.5 else "black")
+
+    if hide_spines:
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+    ax.yaxis.set_ticks_position('left')
     
     
+    ax.set_xlabel('predicted label')
+    ax.set_ylabel('true label')
     
     
+    if not label_names is None:
+        labels = [item.get_text() for item in ax.get_xticklabels()]
+        labels[1:-1] = label_names
+        ax.set_xticklabels(labels)
+        ax.set_yticklabels(labels)
+        
+        
+    if x_ticks_position=='top':
+        ax.xaxis.set_ticks_position('top')
+        ax.xaxis.set_label_position('top')
+        ax.xaxis.tick_top()
+    else:
+        ax.xaxis.set_ticks_position('bottom')
+        
+    
+    if hide_ticks:
+        ax.axes.get_yaxis().set_ticks([])
+        ax.axes.get_xaxis().set_ticks([])
+    
+    return fig, ax
     
     
     
