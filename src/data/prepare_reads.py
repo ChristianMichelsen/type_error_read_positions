@@ -140,20 +140,20 @@ def parallel_preprocessing(file_in, file_out, n_splits, out_suffix='_tmp_'):
 # =============================================================================
 
 
-from datetime import datetime
-import platform
-if platform.system() == 'Linux':
+# from datetime import datetime
+# import platform
+# if platform.system() == 'Linux':
 
-    filename = 'NA12400_error_test.txt'
-    filename = 'ESW_LRUE_MA2621_error_test.txt'
+#     filename = 'NA12400_error_test.txt'
+#     filename = 'ESW_LRUE_MA2621_error_test.txt'
     
-    startTime = datetime.now()
-    preprocess_file(filename, append_corrected_to_filename(filename))
-    print(datetime.now() - startTime)
+#     startTime = datetime.now()
+#     preprocess_file(filename, append_corrected_to_filename(filename))
+#     print(datetime.now() - startTime)
     
-    startTime = datetime.now()
-    n_cores = multiprocessing.cpu_count()-1 or 1
-    parallel_preprocessing(filename, append_corrected_to_filename(filename), n_cores)  
-    print(datetime.now() - startTime)
+#     startTime = datetime.now()
+#     n_cores = multiprocessing.cpu_count()-1 or 1
+#     parallel_preprocessing(filename, append_corrected_to_filename(filename), n_cores)  
+#     print(datetime.now() - startTime)
     
     

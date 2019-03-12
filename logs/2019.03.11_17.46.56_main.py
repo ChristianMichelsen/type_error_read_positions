@@ -40,23 +40,24 @@ cores = 20
 
 
 if do == 'ancient':
-    print("\nRunning on ancient DNA", flush=True)
+    print("\nRunning on ancient DNA")
     filename = 'ESW_LRUE_MA2621_error_test.txt' # ancient data
     filename_bam = 'ESW_LRUE_MA2621_L1_S1_S83_L006.sort.rmdup.bam'
     refname = 'hs37d5.fa'
 elif do == 'modern':
-    print("\nRunning on modern DNA", flush=True)
+    print("\nRunning on modern DNA")
     filename = 'NA12400_error_test.txt' # modern dna
     # filename = 'NA12400_small_bam_1_000_000_error_test.txt' # modern dna
     filename_bam = 'NA12400_small_bam_1_000_000.bam'
     refname = 'hs37d5.fa'
 elif do == 'gargamel':
-    print("\nRunning on gargamel simulated DNA", flush=True)
+    print("\nRunning on gargamel simulated DNA")
     filename = 'gargamel_1_000_000.txt'
     filename_bam = 'gargamel_1_000_000.bam'
     refname = 'horse_chrom31.fa'
 
 
+print(filename)
 plot_prefix = f"../figures/{filename.split('_')[0]}_plot_"
 file_processed_in, N_reads = get_filename_and_lenght(filename)
 
