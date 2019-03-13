@@ -1,5 +1,7 @@
 # script to run the python program, save the output to a log file and save the log file. 
 
+conda activate DNA
+
 #pythonfile=$1
 pythonfile="main.py"
 date_str="$(date '+%Y.%m.%d_%H.%M.%S')"
