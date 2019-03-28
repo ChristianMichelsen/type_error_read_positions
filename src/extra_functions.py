@@ -310,7 +310,8 @@ index2base = {i: val for i, val in enumerate(ACGT_names)}
 # strand2index = {'+': 1, '-': 0}
 # is_reverse2index = {True: 0, False: 1}
 
-header = ['obs_base', 'prev_ref_base', 'position', 'strand', 'ref_base', 'L', 'counts']
+header = ['obs_base', 'next_ref_base', 'prev_ref_base', 'position', 
+          'strand', 'ref_base', 'L', 'counts']
 
 
 def ACGTN_correct_string(string):
@@ -329,19 +330,26 @@ def tidy_ML_seq_ref_data(ref, seq, strand, res):
     
     for i, (s_ref, s_seq) in enumerate(zip(ref, seq)):
         if i == 0:
-            prev_ref_base = '0'
+            prev_ref_base = base2index['0']
         else:
-            prev_ref_base = ref[i-1]
+            prev_ref_base = base2index[ref[i-1]]
+        
+        if i == len(ref)-1:
+            next_ref_base = base2index['0']
+        else:
+            next_ref_base = base2index[ref[i+1]]
+        
         
         obs_base = base2index[s_seq]
-        prev_ref_base = base2index[prev_ref_base]
+        # next_ref_base = base2index[next_ref_base]
+        # prev_ref_base = base2index[prev_ref_base]
         position = i+1
         # strand = is_reverse2index[is_reverse]
         length = len(seq)
         ref_base = base2index[s_ref]
         # is_mismatch = (obs_base != ref_base)
         
-        res[(obs_base, prev_ref_base, position, strand, ref_base, length)] += 1
+        res[(obs_base, next_ref_base, prev_ref_base, position, strand, ref_base, length)] += 1
     
     return None
     
@@ -532,7 +540,8 @@ def get_strand_count(df):
 # =============================================================================
 
 def remove_Ns(df):
-    mask_Ns = (df['obs_base'] == 4) | (df['ref_base'] == 4) | (df['prev_ref_base'] == 4)
+    mask_Ns = ((df['obs_base'] == 4) | (df['ref_base'] == 4) 
+                | (df['next_ref_base'] == 4) | (df['prev_ref_base'] == 4))
     frac = df[mask_Ns].counts.sum()/df.counts.sum()
     print(f"Removing N's from dataframe. This corresponds to {frac:.3%} of all data")
     return df[~mask_Ns]

@@ -9,7 +9,7 @@ Created on Tue Dec 18 12:15:39 2018
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-from tqdm import tqdm
+from tqdm import tqdm, trange
 
 from src.data.prepare_reads import get_filename_and_lenght 
 from src.extra_functions import (
@@ -27,7 +27,7 @@ from src.extra_functions import (
 save_plots = True
 
 do = 'ancient'
-do = 'modern'
+# do = 'modern'
 # do = 'gargamel'
 
 
@@ -36,7 +36,7 @@ force_rerun = False
 do_plotting = True
 do_remove_Ns = True
 
-cores = 20
+cores = 6
 
 
 if do == 'ancient':
@@ -52,8 +52,8 @@ elif do == 'modern':
     refname = 'hs37d5.fa'
 elif do == 'gargamel':
     print("\nRunning on gargamel simulated DNA", flush=True)
-    filename = 'gargamel_1_000_000.txt'
-    filename_bam = 'gargamel_1_000_000.bam'
+    filename = 'gargamel_0.03_0.4_0.01_0.1_s.txt'
+    filename_bam = 'gargamel_0.03_0.4_0.01_0.1_s.bam'
     refname = 'horse_chrom31.fa'
 
 
@@ -64,6 +64,8 @@ file_processed_in, N_reads = get_filename_and_lenght(filename)
 #%% =============================================================================
 #  Compare own reading with mapDamage reads from bam-file
 # =============================================================================
+
+
 
 if False:
     
@@ -76,6 +78,12 @@ if False:
 # =============================================================================
 
 df = get_ML_res(file_processed_in, cores, force_rerun, N_reads, N_splits=100)
+
+
+x=x
+
+
+
 
 if do_remove_Ns:
     df = remove_Ns(df)
@@ -93,7 +101,529 @@ d_lengths_count_reverse = get_read_lengt_count(df_reverse)
 d_strand_count = get_strand_count(df)
 
 
+def get_df_mismatches_only(df):
+    return df.loc[df['ref_base'] != df['obs_base']]
+
+df_mismatches = get_df_mismatches_only(df)
+
+
+
+import itertools
+from scipy.sparse import csr_matrix
+def df_to_sparse_csv_matrix(df, d_merge_cols, min_counts=None):
+    
+    """ 
+        Input: 
+        
+            a dataframe and a dict with 
+            keys: list of columns in dataframe to use 
+            values: iterator containing the unique values of the column
+        
+        Returns: 
+        
+            Sparse array with dimensions (N, M) where N is the number
+            of total counts in df['counts'] and M is the total number of
+            unique columns. 
+    """
+    
+    if min_counts is None:
+        mask_min_counts = np.ones_like(df['counts'], dtype=bool)
+    elif 0 <= min_counts <= 1:
+        quantile = df['counts'].quantile(min_counts)
+        print(f"min_counts = {min_counts:.1%} corresponds to min_counts = {quantile}")
+        mask_min_counts = (quantile <= df['counts'])
+    else:
+        mask_min_counts = (min_counts <= df['counts'])
+    
+    
+    d_tuple_to_index = {}
+    for index, dimension_tuple in enumerate(itertools.product(*d_merge_cols.values())):
+        d_tuple_to_index[dimension_tuple] = index
+
+    def tuple_to_index(dimension_tuple):
+        """ 
+            Get the index of the dimension tuple descrived by the keys of 
+            the input dict d_merge_cols. If not in index, return '-1'.
+        """
+        try:
+            return d_tuple_to_index[tuple(dimension_tuple)]
+        except KeyError:
+            return -1
+    
+    # get the indices
+    indices = np.apply_along_axis(tuple_to_index, 1, df[d_merge_cols.keys()])
+    #mask out any indices equal to -1
+    mask_indices = (indices != -1)
+    mask = np.logical_and(mask_indices, mask_min_counts)
+    # get the index of each column by the mask_indicesed indices times the counts
+    col_ind = np.repeat(indices[mask], df['counts'][mask])
+    # We have one sample pr. row, thus a range from 0, 1, ..., sum(count)    
+    row_ind = np.arange(df['counts'][mask].sum())
+    # We have a single data point in each sample (ie. row)
+    data = np.ones(df['counts'][mask].sum())
+    # Create a sparse matrix of the data, and rows and columns indices
+    csr = csr_matrix((data, (row_ind, col_ind)), dtype=int)
+    return csr
+
+
+df_gargamel1 = get_ML_res('../data/processed/gargamel_0.03_0.4_0.01_0.1_s_corrected.txt',         cores, force_rerun, N_reads, N_splits=100)
+df_gargamel3 = get_ML_res('../data/processed/gargamel_0.03_0.4_0.01_0.3_s_corrected.txt',         cores, force_rerun, N_reads, N_splits=100)
+df_gargamel5 = get_ML_res('../data/processed/gargamel_0.03_0.4_0.01_0.5_s_corrected.txt',         cores, force_rerun, N_reads, N_splits=100)
+df_modern =   get_ML_res('../data/processed/NA12400_error_test_corrected.txt',         cores, force_rerun, N_reads, N_splits=100)
+df_ancient =  get_ML_res('../data/processed/ESW_LRUE_MA2621_error_test_corrected.txt', cores, force_rerun, N_reads, N_splits=100)
+
+
+
+
+pos_max = 40 # TODO: Fix this maximum
+d_merge_cols = {'obs_base': range(4), 
+                'ref_base': range(4), 
+                'position': range(1, pos_max+1),
+                }
+
+# csr_gargamel1 = df_to_sparse_csv_matrix(get_df_mismatches_only(df_gargamel1), d_merge_cols, min_counts=10)
+# csr_gargamel3 = df_to_sparse_csv_matrix(get_df_mismatches_only(df_gargamel3), d_merge_cols, min_counts=10)
+# csr_gargamel5 = df_to_sparse_csv_matrix(get_df_mismatches_only(df_gargamel5), d_merge_cols, min_counts=10)
+# csr_modern = df_to_sparse_csv_matrix(get_df_mismatches_only(df_modern), d_merge_cols, min_counts=10)
+# csr_ancient = df_to_sparse_csv_matrix(get_df_mismatches_only(df_ancient), d_merge_cols, min_counts=10)
+
+
+# import scipy.sparse as sp
+# csr = sp.vstack((csr_modern, csr_ancient), format='csr')
+
+# from sklearn.decomposition import TruncatedSVD
+# svd = TruncatedSVD(n_components=5, n_iter=7, random_state=42)
+# svd.fit(csr)  
+
+
+def dataframe_to_word_frequency(df, d_merge_cols):
+    df2 = pd.DataFrame(df['counts'], index=df.index)
+    df2['merged_cols'] = list(zip(*[df[i] for i in d_merge_cols.keys()]))
+    s_mismatches = (df2.groupby('merged_cols')['counts']
+                       .sum()
+                       # .reindex(itertools.product(*d_merge_cols.values()))
+                       # .fillna(0)
+                       # .astype(int)
+                    )
+    
+    return s_mismatches
+
+
+# s_mismatches_gargamel = dataframe_to_word_frequency(get_df_mismatches_only(df_gargamel), d_merge_cols)
+s_mismatches_gargamel1 = dataframe_to_word_frequency(get_df_mismatches_only(df_gargamel1), d_merge_cols)
+s_mismatches_gargamel3 = dataframe_to_word_frequency(get_df_mismatches_only(df_gargamel3), d_merge_cols)
+s_mismatches_gargamel5 = dataframe_to_word_frequency(get_df_mismatches_only(df_gargamel5), d_merge_cols)
+s_mismatches_modern = dataframe_to_word_frequency(get_df_mismatches_only(df_modern), d_merge_cols)
+s_mismatches_ancient = dataframe_to_word_frequency(get_df_mismatches_only(df_ancient), d_merge_cols)
+
 x=x
+
+
+from collections import Counter
+def generate_bootstrap_sample(s_mismatch, N_samples=None):
+    
+    if N_samples is None:
+        N_samples = s_mismatch.sum()
+    elif 0 <= N_samples <= 1:
+        N_samples = int(N_samples * s_mismatch.sum())
+    
+    random_indices = np.random.choice(s_mismatch.index, 
+                                      size=N_samples, 
+                                      replace=True, 
+                                      p=s_mismatch/s_mismatch.sum())
+    counter = Counter(random_indices)
+    s = pd.DataFrame.from_dict(counter, orient='index', columns=['counts'])
+    return s
+    
+
+N_bootstraps = 10
+N_samples = 100_000
+N_samples = 0.01
+do_normalize = True
+K_topics = 3
+
+# s_bootstraps_gargamel = [generate_bootstrap_sample(
+#                          s_mismatches_gargamel, N_samples=N_samples) 
+#                          for _ in trange(N_bootstraps)]
+
+s_bootstraps_gargamel135 = [s_mismatches_gargamel1, s_mismatches_gargamel3, s_mismatches_gargamel5]
+
+s_bootstraps_modern = [generate_bootstrap_sample(
+                       s_mismatches_modern, N_samples=N_samples) 
+                       for _ in trange(N_bootstraps)]
+s_bootstraps_modern = [s_mismatches_modern]
+
+
+s_bootstraps_ancient = [generate_bootstrap_sample(
+                        s_mismatches_ancient, N_samples=N_samples) 
+                        for _ in trange(N_bootstraps)]
+s_bootstraps_ancient = [s_mismatches_ancient]
+
+
+def join_bootstrap_lists(*lists):
+    """ Both merges lists and counts the elements in each list """
+    counts = ([len(l) for l in lists])
+    joined = sum(lists, [])
+    return joined, counts
+
+
+s_bootstraps_all, N_counts = join_bootstrap_lists(s_bootstraps_gargamel135, s_bootstraps_modern, s_bootstraps_ancient)
+df_concat = (pd.concat(s_bootstraps_all, axis=1, join='outer', sort=True)
+               .fillna(0)
+               .T
+               .astype(int)
+               .reset_index(drop=True))
+
+if do_normalize:
+    max_count = df_concat.sum(1).max()
+    df_concat = df_concat.multiply(max_count//df_concat.sum(1), axis=0)
+    
+
+
+
+
+do_pca_reduction = False
+if do_pca_reduction:
+    df_concat = df_concat
+
+N_gargamel = len(s_bootstraps_gargamel135)
+N_modern = len(s_bootstraps_modern)
+N_all = len(s_bootstraps_all)
+
+X_all = df_concat
+X = df_concat.iloc[:N_gargamel+N_modern, :]
+X_ancient = df_concat.iloc[N_gargamel+N_modern:, :]
+
+y = np.zeros(len(X), dtype=int)
+y[N_gargamel:] = 1
+
+
+y_all = np.zeros(len(X_all), dtype=int)
+y_all[N_gargamel:N_gargamel+N_modern] = 1
+y_all[N_gargamel+N_modern:] = 2
+
+
+
+#%% =============================================================================
+# 
+# =============================================================================
+
+
+do_tsne = False
+
+if do_tsne:
+    
+    # import seaborn as sns; sns.set()
+    from fast_tsne import fast_tsne
+    
+    # # 10 nice colors
+    col = np.array(['#a6cee3','#1f78b4','#b2df8a','#33a02c','#fb9a99', '#e31a1c','#fdbf6f','#ff7f00','#cab2d6','#6a3d9a'])
+    
+    
+    X_sne = X
+    X_sne = X_all
+    
+    y_sne = y
+    y_sne = y_all
+    
+    
+    perplexity = 50
+    
+    # if(N - 1 < 3 * perplexity) { printf("Perplexity too large for the number of data points!\n"); exit(1); 
+    if (len(X_sne) - 1) < (3 * perplexity):
+        print(f"\nperplexity is too large at {perplexity}")
+        perplexity = (len(X_sne) - 1) // 3 
+        print(f"Using new value of {perplexity}\n")
+        
+    Z = fast_tsne(X_sne, perplexity=perplexity, seed=42, map_dims=2, max_iter=1000, nbody_algo='FFT', nthreads=None, return_loss=False)
+    
+    
+    plt.figure(figsize=(10,10))
+    plt.scatter(Z[:,0], Z[:,1], c=y_sne, s=10)
+    plt.tight_layout()
+
+
+
+#%% =============================================================================
+# 
+# =============================================================================
+
+
+def plot_topic_distribution(prob_topic, topics=None, document_names=None, 
+                            figsize=(10, 10), text_pos=-0.05, **kwargs):
+    
+    N, K = prob_topic.shape
+    
+    if topics is None:
+        topics = [f'Topic {i}' for i in range(K)]
+
+    df_prob_topic = pd.DataFrame(prob_topic, columns=topics)
+    
+    fig, ax = plt.subplots(figsize=figsize)
+    df_prob_topic.plot.barh(stacked=True, width=1, ax=ax)
+    ax.set(ylim=(0-0.5, N-0.5))
+    
+    ax.legend(loc='lower left', bbox_to_anchor= (0.0, -0.075), ncol=2, 
+            borderaxespad=0, frameon=False)
+
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    
+    ax.get_yaxis().set_ticks([])
+    
+    ax.invert_yaxis()
+    
+    
+    if document_names is not None:
+        for key, val in document_names.items():
+            mean = np.mean(val) 
+            ax.errorbar(text_pos, mean-0.5, (max(val)-mean)*0.99, fmt='', ecolor='k', capsize=5)
+            ax.text(text_pos, mean-0.5, key, fontsize=12, 
+                    horizontalalignment='center', verticalalignment='center',
+                    bbox=dict(facecolor='white', alpha=1))
+    
+    ax.set(**kwargs)
+    fig.tight_layout()
+    
+    return fig, ax
+
+    
+d = {'Gargamel': [0, np.cumsum(N_counts)[0]],
+     'Modern': [np.cumsum(N_counts)[0], np.cumsum(N_counts)[1]],
+     'Ancient': [np.cumsum(N_counts)[1], np.cumsum(N_counts)[2]]}
+
+
+
+
+if K_topics == 2:
+    topics=['Modern', 'Gargamel']
+    topics=['1', '2']
+else:
+    topics=['Modern', 'Ancient', 'Gargamel']
+    topics=['1', '2', '3']
+
+
+
+
+# 
+#%% =============================================================================
+# 
+# =============================================================================
+
+
+from sklearn.decomposition import LatentDirichletAllocation
+
+
+no_topics = K_topics
+
+# Run LDA
+lda = LatentDirichletAllocation(n_components=no_topics, 
+                                max_iter=100, 
+                                learning_method='online', 
+                                learning_offset=50., 
+                                random_state=0,
+                                n_jobs=-1,
+                                )
+lda = lda.fit(X_all)
+prob_topic_all_lda = lda.transform(X_all)
+lda.components_.round(3)
+lda_component_normed = lda.components_ / lda.components_.sum(axis=1)[:, np.newaxis]
+
+
+# topic_models_components = pd.DataFrame({
+#                                         'lda_topic0': lda_component_normed[0, :],
+#                                         'lda_topic1': lda_component_normed[1, :],
+#                                         }, index=X.columns)
+
+    
+plot_topic_distribution(prob_topic_all_lda, 
+                        # topics=['Modern', 'Ancient', 'Gargamel'],
+                        # topics=['Modern', 'Gargamel'],
+                        topics=topics,
+                        document_names=d,
+                        title=f'Topic Distribution with K={K_topics} from sklearn LDA, do_normalize={do_normalize}')
+
+
+
+#%% =============================================================================
+# 
+# =============================================================================
+   
+
+from slda.topic_models import LDA
+
+
+# Estimate parameters
+K = K_topics
+alpha = np.ones(K)
+beta = np.repeat(1/X.shape[1], X.shape[1])
+n_iter = 50
+
+lda2 = LDA(K, alpha, beta, n_iter, seed=42)
+
+lda2.fit(X_all.values)
+prob_topic_all_lda2 = lda2.transform(X_all.values)
+results2_phi = lda2.phi 
+results2_phi_normed = results2_phi / results2_phi.sum(axis=1)[:, np.newaxis]
+results2_theta = lda2.theta 
+    
+
+plot_topic_distribution(prob_topic_all_lda2, 
+                        # topics=['Modern', 'Ancient', 'Gargamel'],
+                        # topics=['Modern', 'Gargamel'],
+                        topics=topics,
+                        document_names=d,
+                        title=f'Topic Distribution with K={K_topics} from slda LDA, do_normalize={do_normalize}')
+    
+
+
+#%% =============================================================================
+# 
+# =============================================================================
+
+x=x
+
+from slda.topic_models import SLDA
+
+K = K_topics
+alpha = np.ones(K)
+beta = np.repeat(1/X.shape[1], X.shape[1])
+mu = 0
+nu2 = 5
+sigma2 = 1
+n_iter = 100
+
+slda = SLDA(K, alpha, beta, mu, nu2, sigma2, n_iter, seed=42)
+
+slda.fit(X.values, y)
+prob_topic_all_slda = slda.transform(X_all.values)
+results_phi = slda.phi 
+results_phi_normed = results_phi / results_phi.sum(axis=1)[:, np.newaxis]
+results_theta = slda.theta 
+results_eta = slda.eta 
+
+
+plot_topic_distribution(prob_topic_all_slda, 
+                        # topics=['Modern', 'Gargamel', 'Ancient'],
+                        topics=topics,
+                        document_names=d,
+                        title=f'Topic Distribution with K={K_topics} from slda SLDA')
+    
+
+
+#%% =============================================================================
+# 
+# =============================================================================
+
+x=x
+
+
+import gensim
+from gensim.test.utils import common_texts
+from gensim.corpora.dictionary import Dictionary
+from gensim.models.ldamulticore import LdaMulticore
+
+
+class Bow2Corpus(object):
+    """
+    Treat dense numpy array as a sparse, streamed gensim corpus.
+
+    No data copy is made (changes to the underlying matrix imply changes in the
+    corpus).
+
+    This is the mirror function to `corpus2dense`
+    
+    documents_columns: 
+        Documents in dense represented as columns, as opposed to rows.
+
+    """
+    def __init__(self, dense, documents_columns=False):
+        if documents_columns:
+            self.dense = dense.T
+        else:
+            self.dense = dense
+
+
+    def __iter__(self):
+        for doc in self.dense:
+            yield full2sparse(doc.flat)
+
+    def __len__(self):
+        return len(self.dense)
+
+
+def full2sparse(vec, eps=1e-9):
+    """
+    Convert a dense numpy array into the sparse document format (sequence of 2-tuples).
+
+    Values of magnitude < `eps` are treated as zero (ignored).
+
+    This is the mirror function to `sparse2full`.
+
+    """
+    vec = np.asarray(vec, dtype=float)
+    nnz = np.nonzero(abs(vec) > eps)[0]
+    return list(zip(nnz, vec.take(nnz)))
+
+
+
+
+common_dictionary = Dictionary(common_texts)
+common_corpus = [common_dictionary.doc2bow(text) for text in common_texts]
+lda_gensim = gensim.models.ldamodel.LdaModel(csr, num_topics=2)
+
+bla = np.array([[1, 5], [0, 2], [3, 1]])
+
+for row in Bow2Corpus(bla):
+    print(row)
+
+
+#%% =============================================================================
+# 
+# =============================================================================
+
+
+d = {}
+for (i,j), name_type in zip([(0, N_bootstraps), (N_bootstraps, 2*N_bootstraps), (2*N_bootstraps, 3*N_bootstraps)], 
+                ['Gargam', 'Modern', 'Ancient']):
+    
+    for prob_topic, name_model in zip([prob_topic_all_lda, prob_topic_all_lda2, prob_topic_all_slda], 
+                          ['Scikit LDA', 'slda LDA', 'slda SLDA']):
+        mu = prob_topic[i:j].mean(0)
+        sigma = prob_topic[i:j].std(0)
+        
+        d[(name_type, name_model)] = f"Topic 0: {mu[0]:.2%} +/- {sigma[0]:.2%}, Topic 1: {mu[1]:.2%} +/- {sigma[1]:.2%}"
+
+df_comparison = pd.Series(d).unstack()
+
+
+x=x
+
+#%% =============================================================================
+#     
+# =============================================================================
+
+# from sklearn.datasets import load_digits
+# d = load_digits()
+# with open("digits.npy", "wb") as f:
+#     np.save(f, d.data.astype(np.int32).T)
+#     np.save(f, d.target.astype(np.int32))
+
+# from subprocess import call
+# call('fslda train digits.npy model.npy')
+
+
+# import numpy as np
+# with open("model.npy") as f:
+#     alpha = np.load(f)
+#     beta = np.load(f)
+#     eta = np.load(f)
+
+
+
+   
 
 #%% =============================================================================
 # 

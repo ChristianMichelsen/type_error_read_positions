@@ -810,19 +810,6 @@ def mapDamage_main_test(refname, filename_bam, filename):
             seq, ref = build_alignment_reference_seq(read, cigar, md_tag)
             is_reverse, ref_processed, seq_processed = correct_reverse_strans(strand, seq, ref)
             
-            
-            # strand_processed, cigar_processed, read_processed, md_tag_processed = line_txt
-            
-            # # seq, cigar, md_tag = read_processed, cigar_processed, md_tag_processed
-            
-            # seq_processed = build_alignment_sequence(read_processed, cigar_processed, md_tag_processed)
-            # ref_processed = build_reference_sequence(read_processed, cigar_processed, md_tag_processed)
-            
-            # is_reverse = ((strand_processed & 0x10) != 0)
-            # if is_reverse:
-            #     ref_processed = comp(ref_processed)
-            #     seq_processed = comp(seq_processed)
-                
             # external coordinates 5' and 3' , 3' is 1-based offset
             coordinate = get_coordinates(read_bam)
             # record aligned length for single-end read_bams
@@ -851,6 +838,37 @@ def mapDamage_main_test(refname, filename_bam, filename):
                 seq_bam = seq_bam[::-1]
                 refseq_bam = refseq_bam[::-1]
             
+        
+        
+            
+            if not is_reverse:
+                if read != seq_bam_no_gaps:
+                    
+                    # if counter != 3241205:
+                
+                    print("strand \t\t  cigar \tmdtag")
+                    print(f"{strand} \t\t{cigar} \t{md_tag}")
+                    
+                    print("\nDirect read vs query_alignment_sequence")
+                    print(counter)
+                    print(read)
+                    print(read_bam.query_alignment_sequence)
+                    print(compare_str_print(read, read_bam.query_alignment_sequence))
+                
+                    print("\nProcessed read vs seq_bam (processed)")
+                    print(counter)
+                    print(seq_processed)
+                    print(seq_bam)
+                    print(compare_str_print(seq_processed, seq_bam))
+                    
+                    print("\nReference homemade vs reference fasta")
+                    print(counter)
+                    print(refseq_bam)
+                    print(ref_processed)
+                    print(compare_str_print(refseq_bam, ref_processed, ignore_letters=True))
+                
+                
+        
         
         
             if (compare_str(seq_bam, seq_processed) != 1).sum() != 0:
