@@ -39,7 +39,7 @@ force_rerun = False
 do_plotting = True
 do_remove_Ns = True
 
-cores = 6
+cores = 40
 
 
 if do == 'ancient':
@@ -67,12 +67,12 @@ elif do == 'mex':
 plot_prefix = f"../figures/{filename.split('_')[0]}_plot_"
 file_processed_in, N_reads = get_filename_and_lenght(filename, cores)
 
-x=x
-
 
 #%% =============================================================================
 #  Compare own reading with mapDamage reads from bam-file
 # =============================================================================
+
+
 
 if False:
     
@@ -85,9 +85,6 @@ if False:
 # =============================================================================
 
 df = get_ML_res(file_processed_in, cores, force_rerun, N_reads, N_splits=100)
-
-
-x=x
 
 
 if do_remove_Ns:
@@ -110,6 +107,7 @@ def get_df_mismatches_only(df):
     return df.loc[df['ref_base'] != df['obs_base']]
 
 df_mismatches = get_df_mismatches_only(df)
+
 
 
 import itertools

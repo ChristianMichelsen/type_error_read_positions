@@ -67,8 +67,6 @@ elif do == 'mex':
 plot_prefix = f"../figures/{filename.split('_')[0]}_plot_"
 file_processed_in, N_reads = get_filename_and_lenght(filename, cores)
 
-x=x
-
 
 #%% =============================================================================
 #  Compare own reading with mapDamage reads from bam-file

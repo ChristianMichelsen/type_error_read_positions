@@ -10,7 +10,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from tqdm import tqdm, trange
-import sys
 
 from src.data.prepare_reads import get_filename_and_lenght 
 from src.extra_functions import (
@@ -26,12 +25,10 @@ from src.extra_functions import (
 
 
 save_plots = True
-# close_plots = True
 
 do = 'ancient'
-do = 'modern'
-do = 'gargamel'
-do = 'mex'
+# do = 'modern'
+# do = 'gargamel'
 
 
 verbose = True
@@ -39,7 +36,7 @@ force_rerun = False
 do_plotting = True
 do_remove_Ns = True
 
-cores = 6
+cores = 20
 
 
 if do == 'ancient':
@@ -55,24 +52,20 @@ elif do == 'modern':
     refname = 'hs37d5.fa'
 elif do == 'gargamel':
     print("\nRunning on gargamel simulated DNA", flush=True)
-    filename = 'gargamel_0.03_0.4_0.01_0.5_s.txt'
-    filename_bam = 'gargamel_0.03_0.4_0.01_0.5_s.bam'
+    filename = 'gargamel_0.03_0.4_0.01_0.1_s.txt'
+    filename_bam = 'gargamel_0.03_0.4_0.01_0.1_s.bam'
     refname = 'horse_chrom31.fa'
-elif do == 'mex':
-    print("\nRunning on mexican", flush=True)
-    filename = 'Mex_9_S50_L005_R1_001_holi_error_test.txt'
-    filename_bam = 'Mex_9_S50_L005_R1_001_holi.sort.bam'
 
 
 plot_prefix = f"../figures/{filename.split('_')[0]}_plot_"
-file_processed_in, N_reads = get_filename_and_lenght(filename, cores)
-
-x=x
+file_processed_in, N_reads = get_filename_and_lenght(filename)
 
 
 #%% =============================================================================
 #  Compare own reading with mapDamage reads from bam-file
 # =============================================================================
+
+
 
 if False:
     
@@ -88,6 +81,8 @@ df = get_ML_res(file_processed_in, cores, force_rerun, N_reads, N_splits=100)
 
 
 x=x
+
+
 
 
 if do_remove_Ns:
@@ -110,6 +105,7 @@ def get_df_mismatches_only(df):
     return df.loc[df['ref_base'] != df['obs_base']]
 
 df_mismatches = get_df_mismatches_only(df)
+
 
 
 import itertools

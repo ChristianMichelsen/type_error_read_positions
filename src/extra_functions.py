@@ -6,9 +6,6 @@ Created on Fri Feb 15 10:51:05 2019
 @author: michelsen
 """
 
-import numpy as np
-import re
-import pandas as pd
 
 
 
@@ -17,17 +14,23 @@ import pandas as pd
 # Read txt/bam file and process reads and references
 # =============================================================================
 
+import numpy as np
+import re
+import pandas as pd
+
+
+
 _BAM_UNMAPPED  = 0x4
 _BAM_SECONDARY = 0x100
 _BAM_FAILED_QC = 0x200
 _BAM_PCR_DUPE  = 0x400
 _BAM_CHIMERIC  = 0x800
 
-filtered_flags = _BAM_UNMAPPED | \
-                 _BAM_SECONDARY | \
-                 _BAM_FAILED_QC | \
-                 _BAM_PCR_DUPE | \
-                 _BAM_CHIMERIC
+filtered_flags = (_BAM_UNMAPPED  | \
+                  # _BAM_SECONDARY | \
+                  _BAM_FAILED_QC | \
+                  _BAM_PCR_DUPE  | \
+                  _BAM_CHIMERIC)
                  
 BAM_CMATCH      = 0
 BAM_CINS        = 1
@@ -430,6 +433,15 @@ def collect_result_ML(ML_res, pbar, i, cores, ML_chunk):
     return None
 
 
+
+def get_file_length(filename):
+    with open(filename) as f:
+        for i, l in enumerate(f):
+            pass
+    return i + 1
+
+
+
 def get_ML_res(file_processed_in, cores, force_rerun, N_reads, N_splits=100):
     
     filename_mismatch_ML = file_processed_in.replace(f'corrected.txt', 
@@ -441,6 +453,9 @@ def get_ML_res(file_processed_in, cores, force_rerun, N_reads, N_splits=100):
         ML_res = Counter()
         
         if cores == 1:
+            
+            if N_reads is None:
+                N_reads = get_file_length(file_processed_in)
             
             with open(file_processed_in, 'r') as f_processed:    
                 for iline, line_txt in tqdm(enumerate(_read_txtfile(f_processed)), total=N_reads):

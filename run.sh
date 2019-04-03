@@ -1,5 +1,5 @@
 # script to run the python program, save the output to a log file and save the log file. 
-
+source $(conda info --base)/etc/profile.d/conda.sh
 conda activate DNA
 
 #pythonfile=$1

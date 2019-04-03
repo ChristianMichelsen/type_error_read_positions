@@ -6,6 +6,8 @@ Created on Fri Feb 22 13:41:22 2019
 @author: michelsen
 """
 
+#%%
+
 import sys
 import collections
 import numpy as np
@@ -30,11 +32,11 @@ _BAM_PCR_DUPE  = 0x400
 _BAM_CHIMERIC  = 0x800
 
 
-filtered_flags = _BAM_UNMAPPED | \
-                     _BAM_SECONDARY | \
-                     _BAM_FAILED_QC | \
-                     _BAM_PCR_DUPE | \
-                     _BAM_CHIMERIC
+filtered_flags = (_BAM_UNMAPPED  | \
+                  # _BAM_SECONDARY | \
+                  _BAM_FAILED_QC | \
+                  _BAM_PCR_DUPE  | \
+                  _BAM_CHIMERIC)
 
 
 def _filter_reads(bamfile):
@@ -340,20 +342,6 @@ def compare_str_print(a, b, ignore_letters=False):
             res += str(val)
     return res
 
-
-
-_BAM_UNMAPPED  = 0x4
-_BAM_SECONDARY = 0x100
-_BAM_FAILED_QC = 0x200
-_BAM_PCR_DUPE  = 0x400
-_BAM_CHIMERIC  = 0x800
-
-
-filtered_flags = _BAM_UNMAPPED | \
-                 _BAM_SECONDARY | \
-                 _BAM_FAILED_QC | \
-                 _BAM_PCR_DUPE | \
-                 _BAM_CHIMERIC
 
 
 def _read_txtfile(txtfile):
@@ -764,9 +752,9 @@ def mapDamage_main_test(refname, filename_bam, filename):
     # open SAM/BAM file
     in_bam = pysam.AlignmentFile(file_bam_in)
     
-    N_reads = int(pysam.view('-c', '-F 4', f'{file_bam_in}')) # approximate
     
-    reflengths = dict(zip(in_bam.references, in_bam.lengths))
+    
+    # reflengths = dict(zip(in_bam.references, in_bam.lengths))
     # check if references in SAM/BAM are the same in the fasta reference file
     # fai_lengths = read_fasta_index(ref_in + ".fai")
     
@@ -776,22 +764,23 @@ def mapDamage_main_test(refname, filename_bam, filename):
     # elif not compare_sequence_dicts(fai_lengths, reflengths):
     #     return 1
     
-    refnames = in_bam.references
+    # refnames = in_bam.references
     
     
     
     # for misincorporation patterns, record mismatches
-    misincorp = initialize_mut(refnames, options.length)
+    # misincorp = initialize_mut(refnames, options.length)
     # for fragmentation patterns, record base compositions
-    dnacomp =  initialize_comp(refnames, options.around, options.length)
+    # dnacomp =  initialize_comp(refnames, options.around, options.length)
     # for length distributions
-    lgdistrib =  initialize_lg()
+    # lgdistrib =  initialize_lg()
     
     
-    counter = 0
+    # counter = 0
     
     do_tqdm = True
-    
+    if do_tqdm:
+        N_reads = int(pysam.view('-c', '-F 4', f'{file_bam_in}')) # approximate
 
 
     with open(file_processed_in, 'r') as f_processed:
@@ -802,23 +791,25 @@ def mapDamage_main_test(refname, filename_bam, filename):
             it = zip(_read_bamfile(in_bam), _read_txtfile(f_processed))
             
         # main loop
-        for read_bam, line_txt in it:
-            counter += 1
-            
+        for counter, (read_bam, line_txt) in enumerate(it, start=1):
+            # counter += 1
             
             strand, cigar, read, md_tag = line_txt
+            # read is equal to read_bam.query_sequence
+            # read = read_bam.query_sequence
+            
             seq, ref = build_alignment_reference_seq(read, cigar, md_tag)
             is_reverse, ref_processed, seq_processed = correct_reverse_strans(strand, seq, ref)
             
             # external coordinates 5' and 3' , 3' is 1-based offset
             coordinate = get_coordinates(read_bam)
             # record aligned length for single-end read_bams
-            lgdistrib = record_lg(read_bam, coordinate, lgdistrib)
+            # lgdistrib = record_lg(read_bam, coordinate, lgdistrib)
             # fetch reference name, chromosome or contig names
             chrom = in_bam.get_reference_name(read_bam.reference_id)
             
     
-            (before, after) = get_around(coordinate, chrom, reflengths, options.around, ref_bam)
+            # (before, after) = get_around(coordinate, chrom, reflengths, options.around, ref_bam)
             refseq_bam_no_gaps = ref_bam.fetch(chrom, min(coordinate), max(coordinate)).upper()
             # read_bam.query_alignment_sequence contains aligned sequences while read_bam.seq is the read_bam itself
             seq_bam_no_gaps = read_bam.query_alignment_sequence
@@ -829,16 +820,8 @@ def mapDamage_main_test(refname, filename_bam, filename):
         
             # reverse complement read_bam and reference when mapped reverse strand
             if read_bam.is_reverse:
-                refseq_bam = revcomp(refseq_bam)
-                seq_bam = revcomp(seq_bam)
-                beforerev = revcomp(after)
-                after = revcomp(before)
-                before = beforerev
-                
-                seq_bam = seq_bam[::-1]
-                refseq_bam = refseq_bam[::-1]
-            
-        
+                refseq_bam = comp(refseq_bam)
+                seq_bam = comp(seq_bam)
         
             
             if not is_reverse:
