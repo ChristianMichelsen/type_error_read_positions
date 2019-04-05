@@ -18,7 +18,7 @@ from src.extra_functions import (
                                  get_ML_res,
                                  get_error_rates,
                                  get_read_lengt_count,
-                                 get_strand_count,
+                                 get_flag_count,
                                  plot_confusion_matrix,
                                  remove_Ns,
                                  precision_recall_bla_to_df,
@@ -84,7 +84,7 @@ if False:
 # https://www.blopig.com/blog/2016/08/processing-large-files-using-python/
 # =============================================================================
 
-df = get_ML_res(file_processed_in, cores, force_rerun, N_reads, N_splits=100)
+df = get_ML_res(file_processed_in, cores, force_rerun, N_reads=None, N_splits=100)
 
 
 x=x
@@ -93,8 +93,8 @@ x=x
 if do_remove_Ns:
     df = remove_Ns(df)
 
-df_forward = df.loc[((df['strand'] & 0x10) == 0)]
-df_reverse = df.loc[((df['strand'] & 0x10) != 0)]
+df_forward = df.loc[((df['flag'] & 0x10) == 0)]
+df_reverse = df.loc[((df['flag'] & 0x10) != 0)]
 
 df_error_rate_forward = get_error_rates(df_forward, ['C2T', 'G2A'])
 df_error_rate_reverse = get_error_rates(df_reverse, ['C2T', 'G2A'])
@@ -103,7 +103,7 @@ df_error_rate_reverse = get_error_rates(df_reverse, ['C2T', 'G2A'])
 d_lengths_count_forward = get_read_lengt_count(df_forward)
 d_lengths_count_reverse = get_read_lengt_count(df_reverse)
 
-d_strand_count = get_strand_count(df)
+d_flag_count = get_flag_count(df)
 
 
 def get_df_mismatches_only(df):
@@ -703,12 +703,12 @@ if not is_linux() and do_plotting:
     
     for i, (ax, name) in enumerate(zip(ax_error, names)):
         
-        for strand, df_error_rates in zip(['Forward', 'Reverse'], 
+        for flag, df_error_rates in zip(['Forward', 'Reverse'], 
                                           [df_error_rate_forward, 
                                            df_error_rate_reverse]):
             x = df_error_rates.index
             y = df_error_rates.loc[:, name]
-            ax.plot(x, y, '-', label=strand)
+            ax.plot(x, y, '-', label=flag)
         
         ax.set(xlabel='Read Pos', ylabel='Error Rate', title=name,
                xlim=(0, 25), ylim=(0, 0.3))
@@ -751,23 +751,23 @@ if not is_linux() and do_plotting:
         
 
 # =============================================================================
-# Bar chart of strand flag
+# Bar chart of flag flag
 # =============================================================================
     
     
-    fig_strands, ax_strands = plt.subplots(figsize=(20, 6))
+    fig_flags, ax_flags = plt.subplots(figsize=(20, 6))
     
-    keys = np.fromiter(d_strand_count.keys(), dtype=int)
-    x = np.arange(len(d_strand_count))
-    ax_strands.bar(x, d_strand_count.values())
-    ax_strands.set(xlabel='Strand flag', ylabel='Counts', 
-           title='Counts of strand flags')
-    ax_strands.set_xticks(x)
-    ax_strands.set_xticklabels(keys)
+    keys = np.fromiter(d_flag_count.keys(), dtype=int)
+    x = np.arange(len(d_flag_count))
+    ax_flags.bar(x, d_flag_count.values())
+    ax_flags.set(xlabel='flag', ylabel='Counts', 
+           title='Counts of flag')
+    ax_flags.set_xticks(x)
+    ax_flags.set_xticklabels(keys)
     
-    fig_strands.tight_layout()
+    fig_flags.tight_layout()
     if save_plots:
-        fig_strands.savefig(plot_prefix+'strand_flags.pdf', dpi=600)
+        fig_flags.savefig(plot_prefix+'flags.pdf', dpi=600)
         plt.close('all')
     
 

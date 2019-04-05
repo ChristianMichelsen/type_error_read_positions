@@ -57,11 +57,11 @@ def _read_txtfile(txtfile):
     Iterator.
     """
     for line in txtfile:
-        strand, cigar, read, md_tag = line.split()
-        strand = int(strand)
+        flag, cigar, read, md_tag = line.split()
+        flag = int(flag)
         
-        if not (strand & filtered_flags):
-            yield (strand, cigar, read, md_tag)
+        if not (flag & filtered_flags):
+            yield (flag, cigar, read, md_tag)
 
 def comp(seq):
     """ return reverse complemented string """
@@ -283,8 +283,8 @@ def build_alignment_reference_seq(read, cigar, md_tag):
     return seq.upper(), ref.upper()
 
 
-def correct_reverse_strans(strand, seq, ref):
-    is_reverse = ((strand & 0x10) != 0)
+def correct_reverse_strans(flag, seq, ref):
+    is_reverse = ((flag & 0x10) != 0)
     if is_reverse:
         ref = comp(ref)
         seq = comp(seq)
@@ -310,11 +310,11 @@ base2index = {val: i for i, val in enumerate(ACGT_names)}
 index2base = {i: val for i, val in enumerate(ACGT_names)}
 
 
-# strand2index = {'+': 1, '-': 0}
+# flag2index = {'+': 1, '-': 0}
 # is_reverse2index = {True: 0, False: 1}
 
 header = ['obs_base', 'next_ref_base', 'prev_ref_base', 'position', 
-          'strand', 'ref_base', 'L', 'counts']
+          'flag', 'ref_base', 'L', 'counts']
 
 
 def ACGTN_correct_string(string):
@@ -326,42 +326,47 @@ def ACGTN_correct_string(string):
 
 
 # def tidy_ML_seq_ref_data(ref, seq, is_reverse, res):
-def tidy_ML_seq_ref_data(ref, seq, strand, res):
+def tidy_ML_seq_ref_data(ref, seq, flag, res, only_mapDamage_vars=False):
     
     seq = ACGTN_correct_string(seq)
     ref = ACGTN_correct_string(ref)
     
-    for i, (s_ref, s_seq) in enumerate(zip(ref, seq)):
-        if i == 0:
-            prev_ref_base = base2index['0']
-        else:
-            prev_ref_base = base2index[ref[i-1]]
-        
-        if i == len(ref)-1:
-            next_ref_base = base2index['0']
-        else:
-            next_ref_base = base2index[ref[i+1]]
-        
-        
-        obs_base = base2index[s_seq]
-        # next_ref_base = base2index[next_ref_base]
-        # prev_ref_base = base2index[prev_ref_base]
-        position = i+1
-        # strand = is_reverse2index[is_reverse]
-        length = len(seq)
-        ref_base = base2index[s_ref]
-        # is_mismatch = (obs_base != ref_base)
-        
-        res[(obs_base, next_ref_base, prev_ref_base, position, strand, ref_base, length)] += 1
+    if only_mapDamage_vars:
+        for i, (s_ref, s_seq) in enumerate(zip(ref, seq)):
+            obs_base = base2index[s_seq]
+            position = i+1
+            ref_base = base2index[s_ref]
+            res[(obs_base, position, flag, ref_base)] += 1
+        return None
     
-    return None
-    
+    else:
+        
+        for i, (s_ref, s_seq) in enumerate(zip(ref, seq)):
+            if i == 0:
+                prev_ref_base = base2index['0']
+            else:
+                prev_ref_base = base2index[ref[i-1]]
+            
+            if i == len(ref)-1:
+                next_ref_base = base2index['0']
+            else:
+                next_ref_base = base2index[ref[i+1]]
+            
+            obs_base = base2index[s_seq]
+            position = i+1
+            length = len(seq)
+            ref_base = base2index[s_ref]
+            
+            res[(obs_base, next_ref_base, prev_ref_base, position, flag, ref_base, length)] += 1
+        
+        return None
+        
 
 def process_line_tidy_ML(line_txt, ML_res):
-    strand, cigar, read, md_tag = line_txt
+    flag, cigar, read, md_tag = line_txt
     seq, ref = build_alignment_reference_seq(read, cigar, md_tag)
-    is_reverse, ref, seq = correct_reverse_strans(strand, seq, ref)
-    tidy_ML_seq_ref_data(ref, seq, strand, ML_res)
+    is_reverse, ref, seq = correct_reverse_strans(flag, seq, ref)
+    tidy_ML_seq_ref_data(ref, seq, flag, ML_res)
     return None    
     
 
@@ -442,7 +447,7 @@ def get_file_length(filename):
 
 
 
-def get_ML_res(file_processed_in, cores, force_rerun, N_reads, N_splits=100):
+def get_ML_res(file_processed_in, cores, force_rerun, N_reads=None, N_splits=100):
     
     filename_mismatch_ML = file_processed_in.replace(f'corrected.txt', 
                                     f'mismatch_results_{cores}cores_ML.pkl')
@@ -546,8 +551,8 @@ def get_X_count(df, X):
 def get_read_lengt_count(df):
     return get_X_count(df, 'L')
 
-def get_strand_count(df):
-    return get_X_count(df, 'strand')
+def get_flag_count(df):
+    return get_X_count(df, 'flag')
 
 
 #%% =============================================================================

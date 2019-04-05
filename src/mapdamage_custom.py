@@ -356,11 +356,11 @@ def _read_txtfile(txtfile):
     
     for line in txtfile:
         
-        strand, cigar, read, md_tag = line.split()
-        strand = int(strand)
+        flag, cigar, read, md_tag = line.split()
+        flag = int(flag)
         
-        if not (strand & filtered_flags):
-            yield (strand, cigar, read, md_tag)
+        if not (flag & filtered_flags):
+            yield (flag, cigar, read, md_tag)
 
 # from Martin Kircher, to complement DNA
 TABLE = str.maketrans('TGCAMRWSYKVHDBtgcamrwsykvhdb', \
@@ -794,12 +794,12 @@ def mapDamage_main_test(refname, filename_bam, filename):
         for counter, (read_bam, line_txt) in enumerate(it, start=1):
             # counter += 1
             
-            strand, cigar, read, md_tag = line_txt
+            flag, cigar, read, md_tag = line_txt
             # read is equal to read_bam.query_sequence
             # read = read_bam.query_sequence
             
             seq, ref = build_alignment_reference_seq(read, cigar, md_tag)
-            is_reverse, ref_processed, seq_processed = correct_reverse_strans(strand, seq, ref)
+            is_reverse, ref_processed, seq_processed = correct_reverse_strans(flag, seq, ref)
             
             # external coordinates 5' and 3' , 3' is 1-based offset
             coordinate = get_coordinates(read_bam)
@@ -829,8 +829,8 @@ def mapDamage_main_test(refname, filename_bam, filename):
                     
                     # if counter != 3241205:
                 
-                    print("strand \t\t  cigar \tmdtag")
-                    print(f"{strand} \t\t{cigar} \t{md_tag}")
+                    print("flag \t\t  cigar \tmdtag")
+                    print(f"{flag} \t\t{cigar} \t{md_tag}")
                     
                     print("\nDirect read vs query_alignment_sequence")
                     print(counter)
